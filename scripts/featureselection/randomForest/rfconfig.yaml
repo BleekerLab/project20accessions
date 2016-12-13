@@ -1,0 +1,12 @@
+--- 
+# Configuration file for random forest script.
+# For bioassay: accepted values for "type" are "whitefly" or "thrips"
+# For metabolites: accepted values for "type" are "terpenes" or "acylsugars"
+species:
+  data: "../../../data/accession2species.txt"
+phenotype:
+  type: thrips
+  data: "../../../results/01.bioassays/wf/20160311_wf_5days/accession2class.txt"
+metabolites:
+  type: terpenes
+  data: "../../../results/03.metabolome/acylsugars/20150729_acylsugars/20150729_Acylsugar data_normalized.modified.csv"

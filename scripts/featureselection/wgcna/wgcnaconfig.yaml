@@ -1,0 +1,17 @@
+--- 
+# Configuration file for Weighted Gene Correlation Network Analysis script.
+# For bioassay: accepted values for "type" are "whitefly" or "thrips"
+# For metabolites: accepted values for "type" are "terpenes" or "acylsugars"
+phenotype:
+  type: whitefly
+  data: "../../../results/01.bioassays/wf/20160311_wf_5days/20160311_wild.txt"
+metabolites:
+  type: terpenes
+  data: "../../../results/03.metabolome/terpenes/20160517_terpenoids/20160517_GCMS_log+scaled-data.samplesnamesmodified.csv"
+  ions: "../../../scripts/featureselection/randomForest/goodions.txt"
+species:
+  data: "../../../data/accession2species.txt"
+kallisto:
+  data: "../../../results/02.rnaseq/20160531_kallisto/"
+  info: "../../../results/02.rnaseq/20160531_kallisto/info.txt"
+annotations: "../../../data/annotations_SL2.40.txt"

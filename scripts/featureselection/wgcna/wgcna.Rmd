@@ -1,0 +1,438 @@
+---
+title: "Weighted Gene Correlation Network Analysis (WGCNA) on kallisto RNA-Seq results"
+author: "Marc Galland"
+date:  "`r Sys.Date()`"
+output:
+    html_document:
+        number_sections: yes
+        toc: yes
+        toc_depth: 2  
+        keep_md: true
+---
+## Description
+This script will perform a Weighted Gene Correlation Network Analysis (WGCNA) on RNA-Seq data quantification from kallisto.
+The idea is:
+* to identify groups of related transcripts based on Pearson correlation & Topological Overlap
+* to compute the eigengene of each module
+* Plot the module eigengenes
+* Relate the module eigengenes to external traits (e.g. whitefly survival, 7-epizingiberene level) 
+* Extract interesting modules
+
+# Load configuration and data
+
+## global options
+```{r,echo=FALSE}
+knitr::opts_chunk$set(warning=FALSE,message=FALSE,cache=FALSE,fig.path="figs/")
+```
+
+## Creates directories
+## Load libraries
+```{r,echo=TRUE}
+library(WGCNA)
+library(dplyr)
+library(sleuth)
+library(reshape2)
+library(ggrepel)
+library(gridExtra)
+library(grid)
+library(ggplot2)
+library(corrplot)
+library(yaml)
+library(biomaRt)
+source("../usefulFunctions.R")
+```
+
+## Load YAML configuration file
+```{r}
+# import YAML file as a list
+config = yaml::yaml.load_file("wgcnaconfig.yaml")
+```
+
+## Load RNA-Seq kallisto data
+```{r, echo=TRUE,warning=FALSE}
+# Configurate file for Sleuth
+base_dir <- config$kallisto$data
+sample_id = dir(file.path(base_dir,"results"))
+kal_dirs <- sapply(sample_id, function(id) file.path(base_dir, "results", id))
+s2c = read.table(file.path(base_dir,"info.txt"),header=T,stringsAsFactors=FALSE)
+s2c = dplyr::mutate(s2c,path=kal_dirs)
+
+# Creation of the sleuth object 
+so = sleuth_prep(s2c,full_model = ~ accession)
+
+# Extraction of the normalized data table 
+df = kallisto_table(so,normalized = T)
+```
+
+## Load sample to accession correspondence
+```{r}
+sample2accession = read.delim(config$kallisto$info,stringsAsFactors=F,header = T)
+```
+
+## bioassay data import and get one phenotype value / accession
+Based on the type of phenotypic data (e.g. thrips or whitefly) I parse the data differently. 
+Here, I use `r config$phenotype$type` data.
+The file used is `r config$phenotype$data`.
+```{r Data import, warning=FALSE,results='hide',echo=TRUE}
+# import data file
+if (tools::file_ext(config$phenotype$data) == "csv"){
+  phenotype = na.omit(read.csv(config$phenotype$data,stringsAsFactors=F))
+} else if (tools::file_ext(config$phenotype$data) == "txt"){
+  phenotype = na.omit(read.delim(config$phenotype$data,sep="\t",stringsAsFactors=F))
+  }  
+
+# depending on the data type, different parsing are done
+# If type == "whitefly" --> we take the median
+if (config$phenotype$type == "whitefly"){
+  m_phenotype = melt(
+    phenotype[c("accession","cage","percentage")],
+    id.vars = c("accession","cage"),
+    measure.vars = c("percentage"),
+    value.name = "percentage")
+  m_phenotype$variable = NULL
+  m_phenotype$cage = NULL
+  phenotype = m_phenotype %>% 
+    dplyr::group_by(accession) %>%  
+    dplyr::summarise(phenovalue = median(percentage))
+# If type == "thrips" --> we take the life expectancy directly
+} else if (config$phenotype$type == "thrips"){
+  colnames(phenotype) = c("accession","phenovalue")
+  }
+````
+
+## Load interesting ions and get one metabolite value per accession
+```{r}
+# import names of the interesting metabolites (ion data)
+goodions = read.delim(config$metabolites$ions,header = T,sep = "\t",stringsAsFactors=F)
+
+# import metabolite data file
+if (tools::file_ext(config$metabolites$data) == "csv"){
+  metabolites = na.omit(read.csv(config$metabolites$data,stringsAsFactors=F))
+} else if (tools::file_ext(config$metabolites$data) == "txt"){
+  metabolites = na.omit(read.delim(config$metabolites$data,sep="\t",stringsAsFactors=F))
+  }  
+
+# replace wrong names in columns
+colnames(metabolites) = gsub(pattern = "^X",replacement = "ion",x = colnames(metabolites))
+
+# melt data
+# Calculate average metabolite abundance / accession
+# replace negative values if needed (due to scaling)
+# remove Blank and QC
+# keep interesting ions
+m_metabolites = melt(metabolites,id.vars = c("accession","sample"),variable.name = c("compound"))
+metabolites = m_metabolites %>%
+  group_by(accession,compound) %>%
+  summarise(value = mean(value)) %>%
+  filter(!accession %in% c("Blank","QC")) %>%
+  mutate(metabovalue = sapply(X = value,FUN = function(x) replace.negative.by.zeros(x))) %>%
+  select(accession,compound,metabovalue) %>%
+  filter(compound %in% goodions$ion) %>%
+  dcast(formula = accession ~ compound)
+```
+
+# Sleuth analysis
+Call differentially expressed genes using Likelihood ratio
+From Kallisto normalized values, keep only transcripts that are diff. expressed 
+```{r}
+# Fit the full model
+so = sleuth_fit(so, formula = ~ accession,fit_name = "full")
+
+# fit the reduced model a "null" model (all betas = 0 / only intercept)
+so = sleuth_fit(so, formula = ~ 1,fit_name = "null")
+
+# Likelihood ratio in Sleuth + output results
+lrt_res = sleuth_lrt(so,null_model = "null",alt_model = "full")
+LRTres = as.data.frame(lrt_res$tests$lrt[[1]])
+
+# keep transcripts that are differentially expressed
+df = filter(df,target_id %in% LRTres$target_id)
+```
+
+
+# Start of the WGCNA analysis
+
+## Reshape the expression data
+Take the median value of transcript abundance per accession
+```{r}
+m_df = melt(df,id.vars=c("sample","target_id"),measure.vars = c("est_counts"))
+m_df = dplyr::inner_join(m_df,sample2accession,by = "sample")
+w_df = m_df %>%
+  group_by(accession,target_id) %>%
+  summarise(median = median(value)) %>%
+  dcast(accession ~ target_id,value.var = "median") 
+row.names(w_df)=w_df$accession
+w_df$accession=NULL
+print.data.frame(w_df[1:5,1:5])
+```
+
+## Choose a soft-thresholding power 
+```{r,echo=FALSE}
+# Choose a set of soft-thresholding powers
+powers = c(c(1:10), seq(from = 12, to=20, by=2))
+  
+# Call the network topology analysis function
+sft = pickSoftThreshold(w_df,
+                        powerVector = powers,
+                        verbose = 5,
+                        RsquaredCut = 0.85,
+                        networkType = "unsigned")
+# Soft power
+softPower = sft$powerEstimate
+
+# plot squared R2 versus power
+p <- ggplot(data=sft$fitIndices,aes(x = Power,y = SFT.R.sq)) +
+  geom_point() +
+  geom_text_repel(aes(label=sft$fitIndices$Power)) +
+  labs(x = "Soft power",y = "Scale Free Topology Model Fit (signed R2)") +
+  geom_hline(yintercept = 0.90,colour = "red")
+print(p)
+
+ggsave(filename = "soft_threshold.png",plot = p,width = 7,height = 5,dpi = 500)
+```
+
+## Find transcriptional modules (block-wise method)
+1. Pre-cluster transcripts by K-means into blocks of max size = maxBlockSize
+2. Perfoms module detection in each block
+3. Highly correlated modules (correlations between module eigengenes) are merged
+We then perform a full consensus network analysis and module detection in each
+block separately. At
+```{r}
+# Block-wise network construction
+bnet = blockwiseModules(
+  w_df,
+  # data are checked for excessive numbers of missing entries in genes and samples
+  # and for genes with zero variance
+  checkMissingData = T,
+  # maximum block size for module detection
+  maxBlockSize = 10000,
+  corType = "pearson",
+  power=softPower,
+  networkType = "unsigned",
+  # deepSplit between 0 (few, large clusters) to 4 (a lot of little clusters)
+  # see CuttreeDynamic function and package for details
+  deepSplit = 1,
+  detectCutHeight = 0.995,
+  minModuleSize = 100,
+  checkMinModuleSize = TRUE,
+  saveTOMs = TRUE,
+  saveTOMFileBase = "blockwiseTOM"
+  )  
+save(bnet,file = "bnet.R")
+````
+
+## Load network and calculate the Module Eigengenes (1st Principal Component)
+The module eigengene corresponds to the 1st principal component of each module.
+The % of variance explained by each ME is indicated along the plot
+```{r,warning=FALSE}
+# Calculate module eigengenes (1st principal component) of module 
+modEig = moduleEigengenes(w_df,colors=bnet$colors,impute = T,nPC = 1)
+
+# Order module eigengenes
+# Add sample name
+# Put sample column in first position
+# Melt dataframe
+ME = orderMEs(modEig$eigengenes)
+accessions = w_df$accession
+ME = dplyr::mutate(ME,accession = row.names(w_df))
+colnames(ME)=sub(pattern = "^ME",replacement = "",x = colnames(ME))
+m_ME = melt(ME,id.vars = c("accession"),variable.name = "module")
+```
+
+## Correlate the Module Eigengene with the independently measured phenotypes
+```{r}
+# arrange data by accession name ordering in ME data
+phenotype = phenotype[match(ME$accession,phenotype$accession),]
+phenotype = na.omit(phenotype)
+metabolites = metabolites[match(ME$accession,metabolites$accession),]
+metabolites = na.omit(metabolites)
+
+# combine them in a single dataframe
+datTraits = dplyr::inner_join(phenotype,metabolites,by="accession")
+
+# Any accession(s) not present in all dataset ? 
+# If yes, filter Module Eigengenes
+missing_accessions = setdiff(ME$accession,datTraits$accession)
+ME_filtered = filter(ME,! accession %in% missing_accessions)
+row.names(ME_filtered)=ME_filtered$accession
+ME_filtered$accession = NULL
+
+# calculate correlations & p-values
+moduleTraitCor = cor(
+  ME_filtered,
+  dplyr::select(datTraits,-(accession)),
+  method = "pearson")
+moduleTraitPvalue = corPvalueStudent(moduleTraitCor, nrow(w_df))
+
+# With corrplot
+svg("MEcorTraits.svg")
+corrplot(moduleTraitCor,method="circle",p.mat = moduleTraitPvalue,sig.level = 0.1,insig = "blank")
+dev.off()
+png("MEcorTraits.png")
+corrplot(moduleTraitCor,method="circle",p.mat = moduleTraitPvalue,sig.level = 0.1,insig = "blank")
+dev.off()
+
+````
+
+## Select interesting modules and their corresponding transcripts
+Modules are kept if they are correlated to __BOTH__ phenotype and metabolites. 
+```{r}
+# select relevant modules
+mods= row.names(moduleTraitPvalue)
+mods_signifs = apply(moduleTraitPvalue,MARGIN = 2,function(x) x < 0.05) 
+mods_signifs = as.data.frame(mods_signifs)
+interesting_modules = vector()
+# keep module if significant correlation with both phenotype and metabolites
+for (i in seq_along(mods)){
+  if (mods_signifs$phenovalue[i] == "TRUE" & "TRUE" %in% dplyr::select(mods_signifs[i,],-phenovalue)) {
+    interesting_modules[i] = row.names(mods_signifs)[i]
+  }
+}
+interesting_modules = as.vector(na.omit(interesting_modules))
+
+# Make a correspondence between transcripts and module color
+# eliminate genes with too many missing entries or with zero variance
+# Filter transcripts to keep only interesting modules
+correspondence = as.data.frame(cbind(colnames(w_df),bnet$colors,bnet$goodGenes))
+colnames(correspondence)=c("transcript","module","goodGenes")
+correspondence = filter(correspondence,goodGenes=="TRUE")
+interesting_transcripts = filter(correspondence,module %in% interesting_modules)
+interesting_transcripts = droplevels(interesting_transcripts)
+
+# Output tables (one per module)
+for (i in seq_along(interesting_modules)){
+  write.table(
+    dplyr::filter(interesting_transcripts,module == interesting_modules[i]),
+    paste(interesting_modules[i],".txt",sep = ""),
+    quote = F,
+    sep = "\t",
+    row.names = F)
+  }
+```
+
+# Global results part 1: which are the interesting modules  ? 
+
+## Show number of transcripts per module
+```{r,echo=FALSE}
+#Print number of genes by interesting modules
+res = as.data.frame(table(bnet$colors));colnames(res)=c("module","transcript_nb")
+res = filter(res,module %in% interesting_modules)
+knitr::kable(x = res)
+```
+
+## Plot standardized expression of all genes in each module
+```{r}
+# extract average normalized expression 
+# modify column names
+# Select only interesting modules
+# Add accessions
+avgExpr = modEig$averageExpr
+colnames(avgExpr) = sub(pattern = "^AE",replacement = "",x = colnames(avgExpr))
+avgExpr = avgExpr[,colnames(avgExpr) %in% interesting_modules]
+avgExpr = dplyr::mutate(avgExpr,accession = row.names(w_df))
+
+# melt
+avgExprMelted = melt(avgExpr,id.vars = "accession",variable.name = "module")
+
+# Plot
+for (i in seq_along(interesting_modules)){
+  tmp_df = dplyr::filter(avgExprMelted,module == interesting_modules[i])
+  p = ggplot(
+    data = tmp_df,
+    aes(accession,value,group = 1)) +
+    geom_point() +
+    geom_line() +
+    labs(x = "Accession",y = "Average normalized expression of the module") +
+    ggtitle(
+      paste(interesting_modules[i]," (",dplyr::filter(res,module == "black")$transcript_nb," transcripts)",sep ="")
+      ) +
+    geom_text_repel(mapping = aes(accession,value),data = tmp_df,label=tmp_df$accession) +
+    theme(
+      axis.text.x = element_blank()
+      )
+  print(p)
+  ggsave(filename = paste(interesting_modules[i],".png",sep = ""),plot = p,width = 7,height = 5,dpi = 400)
+}
+```
+
+## Export modules to Cytoscape
+I want to export each module corresponding transcriptional network to Cytoscape. 
+```{r Export to Cytoscape}
+# get transcript annotations
+annots = read.delim(config$annotations,header = T,sep = "\t",quote = "",stringsAsFactors=F,col.names = c("target_id","desc"))
+
+# data for network nodes
+nodeData = data.frame(
+  target_id = colnames(w_df),
+  block = bnet$blocks,
+  module = bnet$colors)
+
+
+# add transcript annotation
+nodeData = left_join(nodeData,annots,by="target_id")
+
+# import TOM matrix for each block
+TOMenvs = lapply(dir(pattern = "^blockwiseTOM-block"),FUN = LoadToEnvironment)
+TOMs = list()
+for (i in seq_along(TOMenvs)){
+  TOMs[[i]] = as.matrix(TOMenvs[[i]]$TOM)
+}
+
+# give transcript names to TOM matrix dimensions
+for (i in unique(colNames$block)){
+  goodNames = as.vector(dplyr::filter(nodeData,block == i)$target_id)
+  colnames(TOMs[[i]]) = goodNames
+  row.names(TOMs[[i]]) = goodNames
+}
+   
+# export to Cytoscape
+for (i in seq_along(TOMs)){
+  exportNetworkToCytoscape(
+    TOMs[[i]],
+    nodeFile = paste("CytoscapeNodes_block",i,".txt",sep = ""),
+    edgeFile = paste("CytoscapeEdges_block",i,".txt",sep = ""),
+    weighted = T,
+    threshold = 0.2,
+    nodeAttr = dplyr::filter(nodeData,block == i)[c("module","desc")]
+    )
+}
+```
+
+# use of FANet (Yuna Blum)
+```{r}
+# list available datasets from ensembl plants
+head(listDatasets(useMart("plants_mart",host="plants.ensembl.org")),20)
+
+# list attributes available in a selected mart (tomato)
+head(listAttributes(useDataset(
+  dataset = "slycopersicum_eg_gene",
+  mart = useMart("plants_mart",host = "plants.ensembl.org")))
+  ,10)
+
+# list filters that can be applied to the dataset
+head(listFilters(useDataset(dataset = "slycopersicum_eg_gene", 
+                            mart    = useMart("plants_mart",
+                                              host = "plants.ensembl.org"))), 100)
+
+# Data retrieval
+plantMart = useMart("plants_mart",host = "plants.ensembl.org")
+ensemblTomato = useDataset("slycopersicum_eg_gene",mart = plantMart) 
+
+# get all genes + their annoations
+listOfDesiredAttributes = c("ensembl_gene_id",
+                            "ensembl_transcript_id",
+                            "description",
+                            "kegg_id",
+                            "uniprot_swissprot_accession",
+                            "go_accession",
+                            "go_name_1006",
+                            "interpro_id",
+                            "interpro_short_description")
+tomatogenes = getBM(attributes = listOfDesiredAttributes,mart=ensemblTomato)
+```
+
+
+# Session info
+```{r}
+sessionInfo()
+```

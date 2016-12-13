@@ -1,0 +1,514 @@
+---
+title: "Random forest script to identify interesting features"
+author: "Marc Galland"
+date: "`r Sys.Date()`"
+output:
+    html_document:
+        number_sections: yes
+        toc: yes
+        toc_depth: 2      
+---
+This script should identify the most important metabolites that explain the phenotype of interest among our tomato accessions. 
+
+# Global knitr options & set.seed
+```{r Set global options}
+knitr::opts_chunk$set(cache=FALSE,warning=FALSE,message=FALSE,fig.align="center") 
+set.seed(153)
+```
+
+
+# Load libraries
+```{r Load libraries, echo=TRUE,warning=FALSE,message=FALSE}
+library(reshape2)
+library(ggplot2)
+library(dplyr)
+library(randomForest)
+library(combinat)
+library(miscTools)
+library(yaml)
+library(tools)
+library(ggrepel)
+source("../usefulFunctions.R")
+```
+
+# Set number of bootstraps (N)
+They will generate:
+* N sampling in the metabolite dataset (N trains and N tests df)
+* N random forests
+* N permuted phenotypic dataframes
+```{r Bootstraps}
+# number of bootstraps
+nboots = 500
+```
+
+\pagebreak
+
+# Import parameters from YAML file
+```{r}
+# import YAML file as a list
+config = yaml::yaml.load_file("rfconfig.yaml")
+````
+This is the phenotype data: `r config$phenotype$data`
+
+
+# import data + bootstraps + calculate stats for each data type.
+Data are first imported. 
+Then, we transform the dataframes (wide to long format) to perform median/mean calculations. 
+Finally data are merged and converted to a wide dataframe. 
+
+## bioassay data import
+Based on the type of phenotypic data (e.g. thrips or whitefly) I parse the data differently. 
+```{r Data import, warning=FALSE,results='hide',echo=TRUE}
+# import file
+if (tools::file_ext(config$phenotype$data) == "csv"){
+  phenotype = na.omit(read.csv(config$phenotype$data,stringsAsFactors=F))
+} else if (tools::file_ext(config$phenotype$data) == "txt"){
+  phenotype = na.omit(read.delim(config$phenotype$data,sep="\t",stringsAsFactors=F))
+  }  
+
+# depending on the data type, different parsing are done
+if (config$phenotype$type == "whitefly"){
+  # melt (wide to long format)
+  m_phenotype = melt(phenotype[c("accession","cage","percentage")],id.vars = c("accession","cage"),measure.vars = c("percentage"),value.name = "percentage")
+  m_phenotype$variable = NULL
+  m_phenotype$cage = NULL
+  # group and compute value by accession
+  by_accession = dplyr::group_by(m_phenotype,accession)
+  phenotype = dplyr::summarise(by_accession,value = params$phenotype$stat(percentage))
+} else if (config$phenotype$type == "thrips"){
+  colnames(phenotype) = c("accession","value")
+  }
+````
+
+## import metabolome data
+```{r}
+# import file
+if (tools::file_ext(config$metabolites$data) == "csv"){
+  metabolites = na.omit(read.csv(config$metabolites$data,stringsAsFactors=F))
+} else if (tools::file_ext(config$metabolites$data) == "txt"){
+  metabolites = na.omit(read.delim(config$metabolites$data,sep="\t",stringsAsFactors=F))
+  }  
+
+# replace wrong names in columns
+colnames(metabolites) = gsub(pattern = "^X",replacement = "ion",x = colnames(metabolites))
+```
+
+\pagebreak
+
+## Operations on the metabolite dataframe
+1. Average the technical duplicate measurements (one sample measured twice)
+2. Divide the data into a training and a test datasets. To do so, I randomly select two measurements per accession for the training set and one for the test set.
+3. Average metabolite abundance for each accession for the train and test datasets
+
+### Replace "exceptional" values by zeros and average compound abundance per accession
+If more than 75% of the values are equal to 0 for one accession + one compound then change all values to 0's
+Then average values for each compound and each accession
+```{r Set value exceptions to zeros}
+# melt metabolite data
+m_metabolome = melt(metabolites,id.vars = c("accession","sample"),variable.name = c("compound"))
+
+# number of unique accessions and compounds
+accessions = unique(m_metabolome$accession)
+compounds = unique(m_metabolome$compound)
+
+# creates an empty dataframe to accomodate new averaged values
+m_avg_metabolome = data.frame()
+
+# average technical duplicates
+# replace weird values by 0
+# calculate averages per compound for each accession
+
+for (i in seq_along(accessions)){
+  for (j in seq_along(compounds)){
+    temp_df = data.frame()
+    # average duplicates (technical duplicates)
+    temp_df = filter(m_metabolome,accession == accessions[i],compound == compounds[j])
+    temp_df = temp_df %>% 
+      group_by(accession,sample,compound) %>%
+      summarise(mean = mean(value))
+    # how many values equal to zeros
+    nValuesEqualToZeros = sum(temp_df$mean == 0,na.rm = F)
+    nTotal = length(temp_df$mean)
+    # Set all compound values to zeros if more than 75% are zeros 
+    if (round(nValuesEqualToZeros / nTotal,digits = 2) > 0.75) {
+      temp_df[,"value"] <- 0
+    }
+    # calculate compound mean per accession
+    temp_df = temp_df %>%
+      group_by(accession,compound) %>%
+      dplyr::summarise(mean = mean(mean))
+    # add to empty dataframe
+    m_avg_metabolome = rbind.data.frame(m_avg_metabolome,temp_df)
+  }
+}
+```
+
+### Random sampling
+Here we take 2/3 of the measurements to train the model and 1/3 to test the model.
+```{r Random sampling + eliminate blanks/qc}
+# creates two lists that will shelter the bootstraps of train / test dfs
+trains = list()
+tests = list()
+
+# random sampling 
+for (k in seq_along(1:nboots)){
+  # Creates two empty dataframe to accomodate training and test datasets
+  train = data.frame() 
+  test = data.frame()  
+  # for each compound select randomly measurements for train dataset and for test dataset
+  for (i in seq_along(compounds)){
+  temp_df = data.frame()
+  # create a temporary df with values for one specific compound
+  temp_df = filter(m_avg_metabolome,compound == compounds[i])      
+  # select 2/3 of the rows for train dataset and 1/3 for test dataset
+  rows_for_train = sample(x = nrow(temp_df),size = round(nrow(temp_df) * 2/3))
+  rows_for_test = as.integer(setdiff(row.names(temp_df),rows_for_train))
+  train = rbind(train,temp_df[rows_for_train,])
+  test = rbind(test,temp_df[rows_for_test,])
+  trains[[k]] = train
+  tests[[k]] = test
+      }
+    }
+  }
+
+# average the quantity of metabolites per accession for each compound
+# convert to wide format (human readable format)
+# eliminate blank and QC samples
+l = list(trains,tests)
+for (i in seq_along(l)){
+  for (k in seq_along(1:nboots)){
+    df = as.data.frame(l[[i]][[k]])
+    df = df %>% group_by(accession,compound) %>% summarise(mean=mean(mean))
+    df = dcast(df,formula = accession ~ compound,value.var = "mean")
+    df = subset(df,accession != "Blank")
+    df = subset(df,accession != "QC")
+    l[[i]][[k]] = df
+    }
+}
+```
+
+\pagebreak
+
+## Combine metabolite and *original* phenotypic data in one dataframe 
+````{r Join survival / metabolites datasets}
+# Combine train/test dfs frames with whitefly survival
+# Remove missing values
+# Remove accession column
+originals = l
+for (i in seq_along(originals)){
+  for (k in seq_along(1:nboots)){
+    df = data.frame()
+    df = originals[[i]][[k]]
+    df = dplyr::left_join(x = phenotype,y = df,by = "accession")
+    df = na.omit(df)
+    df = dplyr::select(df,-(accession))
+    originals[[i]][[k]] = df
+    }
+  }
+```
+
+## Combine metabolite and *permuted* survival data in one dataframe 
+The goal here is to permutate N times the WF survival values to unlink them from the metabolite levels. 
+Then I join these permutated WF survival values to the trains/tests datasets
+Finally, I fit N random forests and output the random (non-meaningful) distributions of R2
+This should give one p-value for the R2 calculated previously.
+I first generate N bootstraps of the accessions.
+I then bind these N vectors to the survival values to generate N permutated dataframes.
+````{r Join permutated survival / metabolites datasets}
+# generate N permutated phenotype dataframes
+permutated_phenotype = list()
+for (k in seq_along(1:nboots)){
+  permutated_phenotype[[k]] = dplyr::mutate(phenotype,permutated = sample(phenotype$value))
+  permutated_phenotype[[k]]$value = NULL
+  colnames(permutated_phenotype[[k]]) = c("accession","value")
+}
+
+# Combine train/test dfs frames with permuted phenotypes
+# Remove missing values
+# Remove accession column
+permuted = l
+for (i in seq_along(permuted)){
+  for (k in seq_along(1:nboots)){
+    df = data.frame()
+    df = permuted[[i]][[k]]
+    df = dplyr::left_join(x = permutated_phenotype[[k]],y = df,by = "accession")
+    df = na.omit(df)
+    df = dplyr::select(df,-(accession))
+    permuted[[i]][[k]] = df
+    }
+  }
+```
+
+\pagebreak
+
+# Decision tree fitting (randomForest package)
+Here I want to build a tree model that explains median whitefly survival percentage based on the quantity and presence of metabolites. 
+1. Build the model tree using the train dataset (that contains 2 measures for each compound and accession)
+2. Plot the resulting random forest tree
+3. Use the model tree on the test dataset to assay the robustness of the tree.
+
+## Number of trees
+```{r Number of trees}
+ntrees = 1000
+```
+
+
+## Using the bootstrapped train and test dataframes to fit random forest 
+Here we use the __original__ whitefly survival values (not permuted)
+````{r Random Forest fits on original datasets}
+# random forest list
+forests = list()
+
+# fits a random forest tree using the train dataset & print results
+for (k in seq_along(1:nboots)){
+  train = as.data.frame(originals[[1]][[k]]) # originals[[1]] = train datasets
+  test = as.data.frame(originals[[2]][[k]])  # originals[[2]] = test datasets
+  xFromTest = dplyr::select(test,-value)
+  yFromTest = dplyr::select(test,value)$value
+  fit.rf = randomForest(
+    formula = value ~ .,
+    data = train,
+    xtest = xFromTest,
+    ytest = yFromTest,
+    ntree = ntrees, 
+    mtry = ncol(train)/3,
+    importance = TRUE,
+    nodesize=2)
+  forests[[k]] <- fit.rf
+}
+````
+
+## Using the bootstrapped train and test dataframes to fit random forest 
+Here we use the __permutated__ whitefly survival values (not permuted)
+````{r Random Forest fits on permuted datasets}
+# random forest list containing permutated whitefy survival data
+permutedForests = list()
+
+# fits a random forest tree using the train dataset & print results
+for (k in seq_along(1:nboots)){
+  train = as.data.frame(permuted[[1]][[k]]) # permuted[[1]] = train datasets
+  test = as.data.frame(permuted[[2]][[k]])  # permuted[[2]] = test datasets
+  xFromTest = dplyr::select(test,-value)
+  yFromTest = dplyr::select(test,value)$value
+  fit.rf = randomForest(
+    formula = value ~ .,
+    data = train,
+    xtest = xFromTest,
+    ytest = yFromTest,
+    ntree = ntrees, 
+    mtry = ncol(train)/3,
+    importance = TRUE,
+    nodesize=2)
+  permutedForests[[k]] <- fit.rf
+}
+````
+
+## Plot Mean Squared Errors as a function of tree number
+__Definitions of MSE for regression RF__
+vector of mean square errors: sum of squared residuals divided by n.
+```{r Plot MSE,echo=FALSE}
+# get MSE values from all Random Forests
+allMSE = data.frame(matrix(NA,nrow = ntrees,ncol = nboots))
+for (k in seq_along(1:nboots)){
+  allMSE[,k] = forests[[k]]$mse
+  colnames(allMSE)[k] = paste("RF",k,sep="")
+}
+
+# Calculate mean and SD for each tree
+allMSE$mean = apply(allMSE,1,mean)
+allMSE$sd = apply(allMSE,1,sd)
+
+# plot Mean Squared Error as a function of the number of trees
+p <- ggplot(data=allMSE,aes(x = seq(from = 1,to = ntrees,1),y = mean)) +
+  geom_point() +
+  geom_line(aes(y = mean + sd),colour = "red") +
+  geom_line(aes(y = mean - sd),colour = "red") +
+  ggtitle("Mean Squared Error as a function of tree index") +
+  labs(x="Tree index",y = "Mean Squared Error") +
+  theme_bw(base_size = 14)
+print(p)
+ggsave(filename = "MSEvsTree.png",plot = p,width = 7,height=5,dpi=500)
+````
+\pagebreak
+
+## Computes R squared coefficient and plot predicted/measured values of whitefly survival 
+Compiles all r2 coefficients, one for each Random Forest model created (= N bootstraps)
+Important: for __original__ values of whitefly survival
+```{r,warning=FALSE,echo=FALSE}
+# creates an empty vector of 
+r2 = vector(length = nboots)
+
+# get all r2 coefficients (one for each RF model)
+for (k in seq_along(1:nboots)){
+  test = as.data.frame(originals[[2]][[k]])
+  rf = forests[[k]]
+  r2[k] = rSquared(test$value,test$value - rf$test$predicted)
+  }
+
+# Creates two empty dfs
+# number of lines = number of accessions
+# number of columns = number of bootstraps
+obs = data.frame(matrix(NA,nrow = nrow(originals[[2]][[1]]),ncol=nboots)) 
+pred = data.frame(matrix(NA,nrow = nrow(originals[[2]][[1]]),ncol=nboots))
+
+# Populate these two dfs
+for (k in seq_along(1:nboots)){
+  obs[,k] = originals[[2]][[k]]$value
+  pred[,k] = forests[[k]]$test$predicted
+  colnames(obs)[k] = paste("RF",k,sep="")
+  colnames(pred)[k] = paste("RF",k,sep="")
+  }
+
+# Calculate mean and sd for each accession
+# Compile them into a single df
+obs_pred = as.data.frame(
+  cbind(
+    apply(obs,1,mean),
+    apply(pred,1,mean)))
+colnames(obs_pred)=c("mean_obs","mean_pred")
+
+# Plot actual values versus predicted values
+# Make labels dependent 
+g = ggplot(data = obs_pred,aes(x = mean_obs,y = mean_pred)) +
+  geom_point() +
+  ggtitle(paste("Random forest regression","R2 =",round(x = mean(r2),digits = 2))) +
+  #scale_y_continuous(limits = c(0,100)) +
+  #scale_x_continuous(limits = c(0,100)) +
+  labs(x = "Measured values of whitefly survival (%)",y = "Predicted values of whitefly survival (%)") +
+  theme_bw(base_size = 14)
+print(g)
+````
+\pagebreak
+
+## Plot distributions of random R2 coefficients
+Important: here we use the __permutated__ values for whitefly survival. 
+```{r}
+# creates an empty vector of 
+permuted_r2 = vector(length = nboots)
+
+# get all r2 coefficients (one for each RF model)
+for (k in seq_along(1:nboots)){
+  test = as.data.frame(permuted[[2]][[k]]) # permuted[[2]] = test datasets
+  rf = permutedForests[[k]]
+  permuted_r2[k] = rSquared(test$value,test$value - rf$test$predicted)
+  }
+
+# dataframe for plot
+forplot = data.frame(index=seq(from = 1,to = nboots,by = 1),permutedR2 = permuted_r2)
+
+# Plot permuted r2 distribution and add vertical line for non random R2
+p2 = ggplot(forplot,aes(permutedR2)) +
+  geom_histogram(binwidth = 0.1,colour="black",fill="white") +
+  labs(x = "Random R2 coefficient") +
+  geom_vline(xintercept = mean(r2),colour="red",linetype="dashed")
+print(p2)
+ggsave(filename = "RandomR2distribution.png",width = 7,height = 5,dpi = 600)
+```
+
+# Extract variable importance and plot
+__Variable importance for regression__:
+%IncMSE is the mean increase in Mean Squared Error. If the increase is huge, that means
+that if the metabolite is important, removing it from the set of predictors should increase
+the error.
+
+## Plot ion importance as a function of MSE increase
+```{r Variable importance, echo=FALSE}
+# Extracts variable importance values
+IncMSEs = data.frame(matrix(NA,nrow = nrow(forests[[1]]$importance),ncol = nboots))
+row.names(IncMSEs) = row.names(forests[[1]]$importance)
+
+# Populate the importance dfs
+for (k in seq_along(1:nboots)){ 
+  IncMSEs[,k] = as.data.frame(forests[[k]]$importance[,1])
+  colnames(IncMSEs)[k] = paste("RF",k,sep="")
+  }
+
+# calculate mean + corresponding rank + sort by decreasing order
+IncMSEs$mean = apply(IncMSEs,1,mean)
+IncMSEs$rank = rank(-IncMSEs$mean,ties.method = "random")
+sortedIncMSEs = IncMSEs[order(desc(IncMSEs$rank)),]
+
+# plot variable importance
+p <- ggplot(data = sortedIncMSEs,aes(x=row.names(sortedIncMSEs),y = mean)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Ion importance") +
+  labs(x="Ion",y="Increase in mean squared error") + 
+  coord_flip() +
+  theme_bw(base_size = 12) +
+  theme(axis.text=element_text(size=10))
+print(p)
+````
+
+## Final table of metabolite importance
+```{r Final table of metabolite importance, echo=FALSE}
+# make a table of ion importance (as measured by %IncMSE)
+final = cbind.data.frame(row.names(IncMSEs),IncMSEs$mean,IncMSEs$rank)
+colnames(final)=c("Ion","Increase MSE","Rank")
+# print table
+knitr::kable(head(arrange(final,Rank),n = 10),digits = 2)
+# save the table
+write.table(head(arrange(final,Rank),n = 10),file = "goodions.txt",sep = "\t",row.names = F)
+            
+```
+
+## Plot the abundance of the 5 top metabolites
+
+### Data preparation
+1. Selecting only the interesting metabolites (top 5)
+2. Add species name for plot
+3. Adding the phenotype value for each accession
+```{r Preparing data for plotting, echo=TRUE}
+# keep top 5 interesting metabolites
+# filter metabolite values for these 5 ions
+goodions = as.vector(head(arrange(final,Rank),n = 5)$Ion)
+ionslevels = dplyr::filter(m_metabolome, compound %in% goodions) 
+
+# import accession2species correspondence
+# add to 5 interesting ion levels
+accession2species = read.delim(config$species$data,stringsAsFactors=F)
+ionslevels = dplyr::left_join(x = ionslevels,y = accession2species,by = "accession")
+
+# extract accessions present in both phenotype and metabolite data
+# filter metabolite values
+common_accessions = intersect(phenotype$accession,unique(metabolites$accession))
+ionslevels = dplyr::filter(ionslevels, accession %in% common_accessions) 
+
+# replace negative values by zero
+ionslevels = dplyr::mutate(ionslevels,value = replace.negative.by.zeros(value))
+
+# calculate summary values for each ion per accession
+ionslevels = ionslevels %>% 
+  group_by(species,accession,compound) %>%
+  summarise(
+    median = median(value),
+    average = mean(value),
+    sd = sd(value),
+    N = length(value),
+    se = sd / sqrt(N))
+
+# add phenotype value per accession
+colnames(phenotype)=c("accession","phenotypevalue")
+ionslevels = dplyr::left_join(x = ionslevels,y = phenotype,by = "accession")
+````
+
+### Plot
+```{r Plot selected metabolite abundances,echo=FALSE}
+# plot
+for (i in seq_along(goodions)){
+  tmp = dplyr::filter(ionslevels,compound == goodions[i])
+  g = ggplot(tmp,aes(accession,average,fill=species)) + 
+    geom_bar(stat = "identity",colour="black") +
+    geom_errorbar(aes(x = accession,ymin=average - se,ymax = average + se),width=0.2) +
+    ggtitle(label = goodions[i]) +
+    labs(x = "Accession",y = "Metabolite normalized abundance (AU)") +
+    geom_text_repel(data = tmp,aes(accession,average),label = paste(config$phenotype$type,sep = ":",tmp$phenotypevalue),nudge_x = 1)
+  print(g)
+}
+```
+
+
+# Session info
+```{r,echo=FALSE}
+sessionInfo()
+```
+

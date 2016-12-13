@@ -1,0 +1,134 @@
+---
+title: "Parse acyl sugars"
+author: "Marc Galland"
+date: "23 Jun 2016"
+output: html_document
+---
+This script returns a list of ion mass and retention time (unique identifiers) and their corresponding acyl sugar structure.
+
+# Load libraries 
+```{r Load librarie`s}
+library(dplyr)
+library(gdata)
+````
+
+# Load functions
+````{r}
+# function to load files from a list
+loadFile = function(x) {
+  df = read.delim(x,header=T,dec=".",stringsAsFactors=F)
+  return(df)
+  }
+
+loadExcelFile = function(x) {
+  df = read.xls(x,sheet = 1)
+  return(df)
+  }
+
+# function to change column names
+ChangeColNames <- function(x,newcolnames) {
+  names(x) <- newcolnames
+  return(x)
+}
+```
+
+# Load ion levels data
+```{r Load data}
+# Ion levels
+acylFiles = list.files(
+  "~/SURFdrive/trichome_team/06.results_from_xp/Metabolites/acylsugars/20150729_acylsugars/parsed_acylsugar_samples",
+  pattern = "\\.txt",
+  full.names = TRUE)
+names(acylFiles) = list.files(
+  "~/SURFdrive/trichome_team/06.results_from_xp/Metabolites/acylsugars/20150729_acylsugars/parsed_acylsugar_samples",
+  pattern = "\\.txt",
+  full.names = FALSE)
+
+# read ion level and put them in lists
+ions = lapply(acylFiles,loadFile)
+
+# change column name
+ions = lapply(ions,function(x) ChangeColNames(x,newcolnames=c("sample", "file", "ion","rt","area")))
+```
+
+# samples2accession
+```{r}
+# Sample number to file
+sampleFiles = list.files(
+  "~/SURFdrive/trichome_team/06.results_from_xp/Metabolites/acylsugars/20150729_acylsugars/samples/",
+  pattern = "^^LA|C|Lyc",
+  full.names = TRUE)
+names(sampleFiles) = list.files(
+  "~/SURFdrive/trichome_team/06.results_from_xp/Metabolites/acylsugars/20150729_acylsugars/samples/",
+  pattern = "^^LA|C|Lyc",
+  full.names=FALSE)
+
+# read files and put them in lists
+samples = lapply(sampleFiles,loadFile)
+
+# create a correspondence table
+sample2accession = lapply(samples,function(x) dplyr::select(x,Data.File,Name))
+sample2accession = lapply(sample2accession,function(x) ChangeColNames(x,newcolnames=c("file","sample")))
+
+# add accession name per list element (df)
+for (i in seq_along(sample2accession)){
+  to_add = names(sampleFiles)[[i]]
+  to_add = sub(pattern = "\\.txt",replacement = "",x = to_add)
+  sample2accession[[i]]$accession = to_add
+  }
+
+# merge them in one df
+sample2accession = do.call(what = rbind,args = sample2accession)
+sample2accession = sample2accession %>% 
+  dplyr::filter(!grepl("blank| blank",x = sample)) %>%
+  dplyr::arrange(sample)
+```
+
+
+# Load accession data to retrieve the ion / acyl sugar correspondence
+```{r}
+accessionFiles = list.files(
+  "~/SURFdrive/trichome_team/06.results_from_xp/Metabolites/acylsugars/20150729_acylsugars/",
+  pattern="\\.xlsx",
+  full.names=TRUE)
+names(accessionFiles) = list.files(
+  "~/SURFdrive/trichome_team/06.results_from_xp/Metabolites/acylsugars/20150729_acylsugars//",
+  pattern = "\\.xlsx",
+  full.names=FALSE)
+names(accessionFiles)=sub(pattern = "acyslugars_",replacement = "",x = names(accessionFiles))
+names(accessionFiles)=sub(pattern = "_Uva.xlsx",replacement = "",x = names(accessionFiles))
+
+# read Excel files
+ion2str = lapply(accessionFiles,loadExcelFile)
+
+
+```
+
+
+
+
+# Get non-redundant list of ions in all samples
+```{r}
+# Combine all ions
+df = data.frame()
+for (i in seq_along(ions)){
+  df = rbind(df,ions[[i]])
+}
+
+# Find the problematic retention times (with two dots instead of one)
+a = lapply(ions, function(x) grepl(pattern = "[0-9]i+\\.[0-9]i+\\.",x))
+b= lapply(ions, function(x) grepl(pattern = "[0-9]i+\\.[0-9]i+\\.",x))
+
+# some rows cause problems
+ix.na = is.na(as.numeric(df$rt)) # get index of NA values
+filesWithNAs = as.data.frame(unique(df[which(ix.na),]))
+filesWithNAs$sample = as.character(filesWithNAs$sample)
+filesWithNAs = dplyr::inner_join(x = filesWithNAs,y = sample2accession,by = "sample")
+
+
+# keep only two digits for retention time
+df$rt = round(df$rt,digits = 2)
+# add a column with the unique ion identifier (mass+RT)
+df = dplyr::mutate(df,id=paste(ion,rt,sep = "/"))
+
+```
