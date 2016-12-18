@@ -11,31 +11,63 @@ output:
 params:
   data: "inputdata/20160916_acylsugars.txt"
   species: "../../../data/accession2species.txt"
+  resdir: "results"
 ---
-#    data: 
-#    species: "../../../data/accession2species.txt"
-#data:
-#label: "input dataset"
-#value: inputdata/20160902terpenoids.txt" -->
-#input: file 
-
 # Setup
 
 ## Knitr
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache=FALSE,warning=FALSE,message=FALSE,fig.align="center") 
 ```
 
 ## Load libraries
 ```{r Load libraries}
-library(ggplot2)
-library(ade4)
-library(ggdendro)
+# ggplot2
+if (is.element('ggplot2', installed.packages()[,1]))
+{
+  suppressPackageStartupMessages(require('ggplot2'));
+} else
+{
+  install.packages('ggplot2');
+  suppressPackageStartupMessages(library('ggplot2'));
+}
+
+# dplyr
+if (is.element('dplyr', installed.packages()[,1]))
+{
+  suppressPackageStartupMessages(require('dplyr'));
+} else
+{
+  install.packages('dplyr');
+  suppressPackageStartupMessages(library('dplyr'));
+}
+
+# ggdendro
+if (is.element('ggdendro', installed.packages()[,1]))
+{
+  suppressPackageStartupMessages(require('ggdendro'));
+} else
+{
+  install.packages('ggdendro');
+  suppressPackageStartupMessages(library('ggdendro'));
+}
+
+# ade4
+if (is.element('ade4', installed.packages()[,1]))
+{
+  suppressPackageStartupMessages(require('ade4'));
+} else
+{
+  install.packages('ade4');
+  suppressPackageStartupMessages(library('ade4'));
+}
 ```
 
 ## result directory
 ```{r}
-dir.create("results",showWarnings = F)
+resdir = params$resdir
+dir.create(resdir,showWarnings = F)
+unlink(resdir,recursive = T)
 ```
 
 ## Load data
@@ -62,21 +94,25 @@ accession2species = read.delim(params$species,header = T,sep="\t",stringsAsFacto
 replacebyone <- function(x) {
   if (x > 0){
     x <- 1
+    return(x)
 } else if (x == 0) {
     x <- 0
+    return(x)
 } else {
-    print("you have a problem in your input data (should be 0 or positive values")
-  }
+    print("you have a problem in your input data (values should be >= 0)")
+}
 }
 
+# replace NAs by 0
+df[is.na(df)] <- 0
 
 # make df binary (0 or 1) by applying it to the whole matrix
+row.names(df)=df$accession
 mat = apply(as.matrix(df[,2:ncol(df)]),MARGIN = 1:2,FUN = replacebyone)
-row.names(mat)=df$accession
 ```
 
 # Dendrograms
-```{r}
+```{r dendrogram}
 # select method for distance calculation 
 # 1 = Jaccard (size of intersection/size of union)
 dist = dist.binary(mat,method=1)
@@ -89,21 +125,18 @@ maxy = round(max(hclust.mat$height) + 0.1*max(hclust.mat$height),digits = 1)
 plot(hclust.mat,ylab = "Jaccard distance",xlab = "Accessions")
 
 #save
-svg(filename = file.path("results/","dendogram.svg"))
-plot(hclust.mat,ylab = "Jaccard distance",xlab = "Accessions",ylim=c(0,maxy))
-dev.off()
+dir.create(resdir)
+unlink(resdir,recursive = T)
 
-# 
-# # data extraction from dendrogram
-# # plot using ggdendro
-# # plot using ggplot2
-# ddata = dendro_data(as.dendrogram(hclust.mat))
-# p <- ggplot(segment(ddata)) + 
-#   geom_segment(aes(x=x,y=y,xend=xend,yend=yend)) +
-#   coord_flip() 
-# #  geom_text(mapping = aes(x,y,label=labels),data = ddata) +
-#  # coord_flip()
-# print(p)
+#g <- ggdendrogram(hclust.mat,rotate = T)
+#ggsave(filename = "dendrogram.svg",plot = g,width = 7,height=5,dpi = 400)
+#svg(filename = file.path(resdir,"dendogram.svg"))
+#plot(hclust.mat,ylab = "Jaccard distance",xlab = "Accessions",ylim=c(0,maxy))
+#dev.off()
 ```
 
+# Session info
+```{r session info}
+sessionInfo()
+```
 
