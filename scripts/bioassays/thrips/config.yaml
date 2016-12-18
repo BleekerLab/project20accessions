@@ -1,5 +1,0 @@
---- 
-# specify input data and species information
-inputdata: "inputdata/thrips.txt"
-info: "../../../data/accession2species.txt"
-
