@@ -1,0 +1,390 @@
+---
+title: "Thrips survival analysis"
+author: "Marc Galland"
+date: "`r Sys.Date()`"
+output:
+    html_document:
+        number_sections: yes
+        toc: yes
+        toc_depth: 2  
+---
+
+# Background
+This script executes a survival analysis ("analysis of time to death") from the thrips survival data (several measurements during consecutive days)
+
+This type of analysis is characterized by so-called __censored observations__ which are partial observations.
+For instance, some thrips have escaped the observational unit (a plastic box). Thus, we have only partial measurements for these cases. 
+
+## Online resources
+More on this type of analysis can be found:
+-  [Statistic courses by German Rodriguez](http://data.princeton.edu/pop509) 
+-  [Data blog by steadyfish part 1](http://justanotherdatablog.blogspot.nl/2015/08/survival-analysis-1.html)
+-  [Data blog by steadyfish part 2](http://justanotherdatablog.blogspot.nl/2015/08/survival-analysis-2.html)
+-  [University of Idaho](http://www.webpages.uidaho.edu/wlf448/2007/LifeTables.htm)
+-  [StatSoft only documentation](http://www.statsoft.com/Textbook/Survival-Failure-Time-Analysis#general)
+
+## Kaplan-Meier estimates
+From [wikipedia](https://en.wikipedia.org/wiki/Survival_analysis#Kaplan-Meier_plot_for_the_aml_data):
+> the Survival function S(t), is the probability that a subject survives longer than time t. 
+> S(t) is theoretically a smooth curve, but it is usually estimated using the Kaplan-Meier(KM) curve. 
+> The graph shows the KM plot for the aml data.
+
+# Configuration 
+
+## libraries
+```{r load libraries}
+library(survminer)
+library(yaml)
+library(plyr)
+library(survival)
+```
+
+## config file
+```{r config}
+# load file
+config = yaml.load_file(input = "config.yaml")
+
+# create directories for output (plots...)
+resdir = "results"
+unlink(resdir,recursive = TRUE)
+dir.create(resdir,showWarnings = F)
+
+# creates plot directory
+plotdir = file.path(resdir,"plots")
+dir.create(plotdir,showWarnings = F)
+```
+
+## Data import
+```{r data import}
+# check file extension to load file
+if (tools::file_ext(config$inputdata) == "csv"){
+  survData = read.csv(config$inputdata,header = T,stringsAsFactors = F)
+} else if (tools::file_ext(config$inputdata) == "txt") {
+    survData = read.delim(config$inputdata,header=T,stringsAsFactors = F)
+} else {
+    print("input data needs to be comma-separated (.csv) or tabulated (.txt)")
+}
+
+# change column names
+colnames(survData) = c("position","larvae_id","time","status","accession")
+```
+
+
+# Survival analysis 
+
+## Medians
+Here we want to (i) fit survival curves for each accession. 
+Then, we can calculate median survival times `S(t0.5)=0.5` for each accession. 
+We order accessions according to this median survival value.
+```{r medians}
+fit <- with(survData,survfit(formula = Surv(time,status) ~ accession))
+# print values
+fit
+```
+
+## Survival curves
+Define a helper function
+```{r survival fit}
+# define helper function to plot survival curve
+plotSurvival = function(df,confidence=0.95,xmin=0,xmax = 19){
+  # calculate survival object
+  survObject = with(df,Surv(time = time,event = status))
+  # fit model
+  fit <- survfit(formula = survObject ~ accession,data = df,conf.int=confidence)
+  # plot model
+  g <- ggsurvplot(
+   fit,                      # survfit object with calculated statistics.
+   risk.table = FALSE,        # show risk table.
+   pval = TRUE,              # show p-value of log-rank test.
+   conf.int = TRUE,          # show confidence intervals for 
+                             # point estimaes of survival curves.
+   xlim = c(xmin,xmax),           # present narrower X axis, but not affect
+                             # survival estimates.
+   break.time.by = 1,        # break X axis in time intervals by 500.
+   ggtheme = theme_bw(),  # customize plot and risk table with a theme.
+   risk.table.y.text.col = T,  # colour risk table text annotations.
+   risk.table.y.text = FALSE, # show bars instead of names in text annotations in legend of risk table
+   font.main = 18,              # title font size
+   font.x = 16,                 # font x axis 
+   font.y = 16                 # font y axis
+   )
+  return(g)
+}
+```
+
+Create plots
+```{r}
+# empty list for plots
+l = list()
+
+# make plots
+accessions = unique(survData$accession)
+for (i in seq_along(accessions)){
+  df = dplyr::filter(survData,accession == accessions[i])
+  l[[i]] = plotSurvival(df)
+  plot_title = accessions[i]
+  gg = l[[i]]$plot + ggtitle(plot_title)
+  ggsave(filename = file.path(plotdir,paste(accessions[i],".png",sep = "")),plot = gg,width = 7,height = 5,dpi = 400)
+}
+```
+
+## Log rank test
+If `rho=0` this is equivalent to log rank test.
+If `rho=1` this is equivalent to Peto & Peto test.
+```{r log rank test}
+survdiff(data = survData,formula = Surv(time,status) ~ accession,rho = 0)
+```
+
+## Cox proportional hazards 
+Based on the hypothesis that hazard (risk of dying )
+```{r}
+# fit a Cox PH model
+fitCox = coxph(formula = Surv(time,status) ~ accession,data = survData)
+summary(fitCox)
+```
+
+
+# session info
+```{r}
+sessionInfo()
+```
+
+
+
+# Life table analysis
+From [StatSoft only documentation](http://www.statsoft.com/Textbook/Survival-Failure-Time-Analysis#general):
+> This table can be thought of as an "enhanced" frequency distribution table. 
+The distribution of survival times is divided into a certain number of intervals. For each interval we can then compute the number and proportion of cases or objects that entered the respective interval "alive," the number and proportion of cases that failed in the respective interval (i.e., number of terminal events, or number of cases that "died"), and the number of cases that were lost or censored in the respective interval.
+
+From the [University of Idaho](http://www.webpages.uidaho.edu/wlf448/2007/LifeTables.htm):
+> The type of life table We will create a __cohort__ or __dynamic__ life table since we follow a cohort of thrips all "born" at the same time through their life. 
+
+## Important parameters to be calculated
+-  **x** = **age**  
+Measured in years or some other conventional unit.
+-  **n(x)** = n(x-1) - d(x-1)  **the number of individuals surviving at the start of age interval x**. 
+Note: n0 = sum(dx) if dx expressed as numbers dying and the survival schedule is complete for all members of the cohort.
+-  **d(x)** = n(x) - n(x+1)  **the number of individuals of a cohort dying during the age interval x to x+1**. 
+-  **q(x)** = d(x) / n(x)  **finite rate of mortality during the age interval x to x + 1**.
+Note: this parameter is least affected by bias in the sample and gives the most direct projection of the mortality pattern in a population. It is often used to make comparisons within and between species.
+-  **S(x)** = (nx-dx)/n(x) or 1 - q(x)  **finite rate of survival during the age interval x to x + 1**. 
+This parameter is used in harvest calculations and in population modeling. Note: finite rates cannot be added to get total survival rate for a longer period of time; however, finite survival rates are multiplicative (i.e., survival from age 0 to 3 = S0 x S1 x S2).
+-  **l(x)** = n(x) / n(0)	 **the proportion (scaled from 0 to 1) of individuals surviving at the start of age interval x**.
+You will also see lx expressed per 1,000, i.e., = (nx / n0)*1000 . This parameter is used to plot survivorship curves (see comments below).
+-  **k(x)** = log10 nx - log10 nx+1 	**killing power or a standardized measure of the intensity (rate) of mortality**.
+Unlike qx-values, kx-values can be added to determine the mortality rate for a number of age classes. Note: because kx-values are calculated using log10, you must take the antilog of the common log to convert back to finite survival (i.e., S = 10-k).
+-  **L(x)** = [l(x) -l(x+1)]/2  **midpoint survivorship** 
+Measures the proportion of individuals surviving to the midpoint of age category x.
+-  **T(x)** = T(x-1) L(x-1) with T0=sum(Lx) = **measure the total number of age categories left to be lived by all individuals who survive at the beggining of age category x**.
+-  **e(x)** = Tx/lx = **life expectancy**   
+Mean number of age categories remaining until death for individuals surviving to the beginning of age category x.For all x, `e_(x+1)+1>e_x`. This means that the total expected lifespan increases monotonically. 
+
+Here is an example of the table you should get.
+
+| x | nx   | dx  | lx   | qx  | Lx    | Tx   | ex   |
+|---|------|-----|------|------|------|------|------|
+| 0 | 1000 | 200 | 1.00 | 0.20 | 0.90 | 2.70 | 2.70 |
+| 1 | 800  | 100 | 0.80 | 0.12 | 0.75 | 1.80 | 2.25 |
+| 2 | 700  | 200 | 0.70 | 0.29 | 0.60 | 1.05 | 1.50 |
+| 3 | 500  | 300 | 0.50 | 0.60 | 0.35 | 0.45 | 0.90 |
+| 4 | 200  | 200 | 0.20 | 1.00 | 0.10 | 0.10 | 0.50 |
+| 5 | 0    | 0   | 0.00 | --   | 0.00 | 0.00 | --   |
+
+# Setup
+
+## Knitr
+```{r setup, warning=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo=TRUE,message=FALSE,warning=FALSE,cache=FALSE,fig.align="center")
+```
+
+## Load libraries and set current working directory
+```{r Load librairies, echo=TRUE,results='hide',message=FALSE,warning=FALSE}
+library(reshape2)
+library(dplyr)
+library(yaml)
+library(broom)
+library(survival)
+library(ggplot2)
+```
+
+## data import 
+__Important__: the first column should correspond to age (x variable)
+```{r import data, tidy=FALSE}
+# import survival data
+thrips = read.delim(data,header = T,na.strings = "NA",stringsAsFactors=F)
+
+# remove NAs
+thrips = na.omit(thrips)
+
+# keep only time / accession / alive / dead / missing
+thrips = dplyr::select(thrips,dpi,accession,alive,dead,missing)
+```
+
+## Creates function to calculate life expectancy at birth
+Since we are going to calculate the life expectancy of thrips for each accession, we define a helper function to extract **n(x)**, **d(x)**, and so on until we have the life expectancy at the start of the experiment (e0) 
+
+For time = 0 (start of the experiment):
+**e0 = T0 / l0** where l(0)=1
+
+Input data for one accession have to be like:
+| time | accession | alive  | dead  | missing
+|------|-----------|--------|-------|--------
+| 0 | LA1777 | 23 | 0 | 0  
+| 1 | LA1777 | 22 | 0 | 0
+| 2 | LA1777 | 20 | 2 | 0
+etc.
+
+```{r}
+# function takes survival data for one accession to calculate life table metrics
+life_expectancy = function(df){
+  
+  # remove lines with missing values
+  df = na.omit(df)
+  
+  # time points (have to be in first column)
+  x = df[,1]
+   
+  # number of individuals at time 0
+  n0 = 24
+  
+  # number of individuals at time x
+  nx = df[,"alive"]
+  
+  # calculate crute death rate dx
+  nx = c(n0, nx)                      # the first argument is for n0
+  nx.plus1 = c(nx[2:length(nx)], NA)  # NA for time+1 that does not exist
+  dx = nx - nx.plus1
+
+  # proportional death rate qx 
+  qx = dx/nx
+  
+  # survivorship l(x)
+  lx = nx/n0
+  
+  # killing power at time x
+  # total mortality rate
+  kx = log10(nx) - log10(nx.plus1)
+  Kx = sum(kx)
+  
+  # Midpoint survivorship L(x)
+  # Lx is the average midpoint survivorship along time
+  lx.plus1 = c(lx[2:length(lx)], NA)
+  Lx = (lx + lx.plus1)/2
+  lx.minus1 = c(NA,lx[1:length(lx)-1])
+  Lx.minus1 = (lx + lx.minus1)/2
+    
+  # T0 = Total number of age categories left to be lived at experiment start
+  # T0 = sum(Lx)
+  # e0 = T0 / l0 = T0 / (n0/n0) = T0
+  x.plus1 = c(x[2:length(x)], NA)
+  x.interval = x.plus1 - x
+  T0 = sum(Lx*x.interval, na.rm = TRUE)
+  Tx = sum(Lx) - Lx.minus1
+  
+  # life expectancy
+  ex = Tx / Lx
+  
+  # outputs
+    # life expectancy at 0
+    # lx along time intervals
+    # q(x) and x = age/time
+  results = list(exp = T0,surv = lx,death = qx)
+  return(results)
+}
+```
+
+## Calculate life expectancy at birth for each accession
+```{r life exp at birth}
+accessions = unique(thrips$accession)
+
+# creates dataframe to harvest results
+lexp = vector()
+
+# time scale (in first column)
+timeScale = unique(thrips[,1])
+
+# loop over accessions
+for (i in seq_along(accessions)){
+  df = filter(thrips,accession == accessions[[i]])
+  results = life_expectancy(df)
+  
+  # get life expectancy
+  lexp = c(lexp,results$exp)
+}
+
+# creates a dataframe for the life expectancy results
+# order by increasing life expectancies
+df = cbind.data.frame(accession = accessions,lexp = round(lexp,digits = 2))
+df$accession = as.character(df$accession)
+df = df[order(df$lexp,decreasing = F),]
+
+# write to table
+write.table(x = df,file = file.path(resdir,"life_expectancy_at_day0.txt"),sep = "\t",row.names = F,quote = F)
+
+# plot 
+
+# Add information on species
+accession2species = read.delim(config$dirs$info,header = T,sep = "\t",stringsAsFactors=F)
+
+# accessions common with whitefly survival 
+relevantAccessions = c("LYC38","LA0716","LA0407","LYC4","LA1777","LA1401","LA2172","LA2695","LA1718","LA1278","LA2133","LYC140","PI127826","LA1578","LA1954","C32","LA2663","LA1840","LA4024","LA1364")
+
+# filter and add species
+df = df[which(df$accession %in% relevantAccessions),]
+df = dplyr::inner_join(x = df,y = accession2species)
+
+# plot and save figure
+g = ggplot(data = df,aes(accession,lexp,fill=species)) +
+  geom_bar(stat="identity",color="black") +
+  labs(y = "Life expectancy at day 0", x = "accession") +
+  theme(axis.text.x = element_text(angle=40,hjust=1)) +
+  scale_x_discrete(limits = df$accession)
+print(g)
+ggsave(filename = file.path(resdir,"life_expectancy_day0.png"),plot = g,width = 7,height = 5,dpi = 600)
+
+```
+
+
+
+## calculate survivorship and mortality
+```{r}
+survivals = list()
+mortalities = list()
+
+# loop 
+for (i in seq_along(accessions)){
+  df = filter(thrips,accession == accessions[[i]])
+  results = life_expectancy(df)
+  
+  # get survivorship along time
+  survivals[[i]] = results$surv
+  
+  # get mortality along time
+  mortalities[[i]] = results$death
+}  
+
+# get names
+names(survivals) = accessions
+names(mortalities) = accessions
+```
+
+## Life table plots
+```{r}
+# Survivorship curves y = l(x) and x = age/time
+
+# Mortality curves y = q(x) or k(x) and x = age/time
+
+```
+
+# Session info
+```{r}
+sessionInfo()
+```
+
+# Example taken from [German Rodriguez] (http://data.princeton.edu/pop509/)
+```{r}
+# us survival as a function of age
+us <- read.table("http://data.princeton.edu/pop509/us2013s.dat", header=TRUE)
+us <- dplyr::mutate(us,H = -log(S),agem =age + 0.5,h = c(diff(H), NA),logh=log(h))
+```
+

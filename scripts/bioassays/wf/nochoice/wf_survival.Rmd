@@ -1,0 +1,221 @@
+---
+title: "Analysis of whitefly survival after 5 days"
+author: "Marc Galland"
+date: "`r Sys.Date()`"
+output:
+    html_document:
+        number_sections: yes
+        toc: yes
+        toc_depth: 2  
+params: 
+  data: "../../../../results/01.bioassays/wf/20160311_wf_5days/20160311_wild.txt"
+  species: "../../../../data/accession2species.txt"
+---
+
+# Setup 
+
+## Knitr options
+```{r setup, warning=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo=TRUE,message=FALSE,warning=FALSE,cache=FALSE,fig.align="center")
+```
+
+## Load libraries and set current working directory
+```{r Load librairies, echo=TRUE,results='hide',message=FALSE,warning=FALSE}
+library(reshape2)
+library(plyr)
+library(dplyr)
+library(Hmisc) 
+library(knitr)
+library(lme4)
+library(bbmle)
+library(formula.tools)
+library(gridExtra)
+```
+
+## setup directories
+```{r}
+inputdata = params$data  
+
+# creates result directory and emtpy files present if they already exists
+resdir = "results"
+dir.create(resdir,showWarnings = F)
+unlink(x = dir(resdir,full.names = T),recursive = T)
+```
+
+## data import + show first lines of the table
+```{r import data, tidy=FALSE}
+wf = read.table(file = inputdata,header = T,sep = "\t",na.strings = "NA",stringsAsFactors=F)
+```
+
+# Data wrangling
+
+## Creation of a whitefly % of survival melted dataframe 
+```{r WF melted dataframe}
+m_wf = melt(data = wf,id.vars = c("accession"),value.name = "percentage",measure.vars = c("percentage"),na.rm = T) #melting from wide to long format
+m_wf$variable = NULL
+```
+
+## Add information on species
+```{r Species2accession}
+accession2species = read.delim(params$species,header = T,sep = "\t",stringsAsFactors=F)
+m_wf = dplyr::left_join(x = m_wf,y = accession2species)
+```
+
+## Calculate the median survival value per accession to order boxplots
+It also writes a table of the results
+```{r Calculate survival per accession, echo=TRUE}
+# make a dataframe grouped by accession using dplyr package
+df = dplyr::group_by(m_wf,accession)
+# calculate median per accession to sort the accessions in increasing wf survival order
+df = dplyr::summarise(df,median = median(percentage,na.rm = T))
+# sort by increasing median values --> useful for plotting
+df = dplyr::arrange(df,median)
+df = droplevels.data.frame(df)
+ordered_accessions = as.character(df$accession)
+# write table
+write.table(df,file = file.path(resdir,"median_survival.txt"),sep="\t",quote = F,row.names = F)
+```
+
+# Boxplots
+```{r Boxplots, echo=FALSE}
+# reorder factor levels for accession in melted dataframe
+m_wf$accession = factor(m_wf$accession,levels = ordered_accessions)
+
+# make the plot
+survival <- ggplot(data = m_wf,aes(x = accession,y = percentage,fill=species)) +
+  geom_boxplot() +
+  stat_summary(fun.y="mean",geom="point",shape=23,size=2,fill="white") +
+  theme(axis.text.x = element_text(angle=30,hjust=1,vjust=1)) + 
+  ggtitle("Whitefly survival after five days") +
+  theme(plot.title = element_text(size=18))
+
+# print the plot in the final document
+print(survival)
+
+# save plot into a file
+ggsave(filename = file.path(resdir,"boxplot_wf_survival.png"),plot = survival,width=10,height=5,dpi = 400)
+```
+
+# Generalized Linear Mixed Models
+##Taken from Yipeng's past analysis:
+The surviving rate of whiteflies in each cage is the result of accession (genotype) effect, block (environment) effect, plant effect (individual variation) and unknown random factors’ effects. Since our object is to use surviving rate of whiteflies in each accession to represent the pest resistance level of corresponding accession, it is better to exclude the influences of the effects of block, plant and cage. 
+
+Generalized linear mixed models (GLMMs) were used to analysis the effects of accession, block, plant and cage on the surviving rate. GLMMs are an extension of linear mixed models to allow response variable from different distribution. In linear mixed model, if a treatment affects the population mean, it is a fixed factor. If an effect is associated with a sampling procedure (eg. subject, block), it is a random effect. The general form of the model is:
+y = Xβ + Zγ + ε
+Where:
+y is N*1 response variable
+X is N*p matrix for predictor variable
+β is p*1 coefficients
+Z is the N*q design matrix for the q random effects (the random complement to the fixed X)
+γ is q*1 vector of the random effects (the random complement to the fixed β)
+ε is N*1 vector of residuals. 
+
+q indicates the levels of random effects, in our case we have 5 blocks, thus q is 5. In matrix Z, if the observation i belongs to the block 1 in that column, the cell will be 1, 0 otherwise. Now we have 2 parameters, γ and β, to estimate. Since we think random effects don’t change the population mean, we assume random γ follows normal distribution N(0, G), and G is the variance-covariance matrix of random effects. Then only β need to be estimated. If y follows normal distribution, linear mixed model could be used, as xi increase 1, y increase βi. However, this is not the case if y is not normal distribution. In GLMMs, we must use link function to link binomial distribution y response variable and linear model. Briefly speaking, it just like using link function to transform y response variable to normal distribution. In binomial GLMMs, loge(p/(1-p)), where p is the probability for live or dead, or loge(live/dead), are commonly used. Thus in binomial GLMMs, the mathematical form is:
+loge(p/(1-p)) = Xβ + Zγ + ε
+Restricted maximum likelihood (REML) method is used to estimate β.
+(above mathematical explanation of GLMMs refer to http://www.ats.ucla.edu/stat/mult_pkg/glmm.htm).
+
+
+We can then compare models with the deviance (lack of fit) and a Wald-test / Chi2 test
+
+## First we fit multiple logistic regression models
+```{r Fit models}
+# remove missing values
+# convert cage to factor
+# Calculate a probability to die for each observation
+wf = na.omit(wf)
+wf$cage = as.factor(wf$cage)
+wf$plant = as.factor(wf$plant)
+
+# Remove LA0716
+wf = dplyr::filter(.data = wf,accession != "LA0716")
+
+# Fit models
+# dead / total - dead
+fit1 = glm(cbind(dead,total-dead) ~ 1,data = wf,family = binomial(link = logit)) # intercept only model
+fit2 = glm(cbind(dead,total-dead) ~ 1 + accession, data=wf, family = binomial(link = logit)) # model with accession
+fit3 = glmer(cbind(dead,total-dead) ~ 1 + accession + (1|accession/plant),data = wf,family=binomial(link = logit)) # random plant effects
+fit4 = glmer(cbind(dead,total-dead) ~ 1 + accession + (1|accession/plant/cage),data = wf,family=binomial(link = logit)) # random plant/cage effects
+```
+
+## Compare models (Deviance and AIC plots)
+AIC is an information criteria. It can be compared across different models.
+A minimal AIC value should be looked for.
+```{r}
+# put all models in a list
+fits_no_mixed = list(fit1,fit2)
+fits_mixed = list(fit3,fit4)
+
+# gather deviances and plot
+deviances = c(deviance(fit1),deviance(fit2),deviance(fit3),deviance(fit4))
+
+# plot AICs and dAICs (differences between AICs) 
+AICs = cbind.data.frame(
+  models = sapply(c(fits_no_mixed,fits_mixed),function(x) {deparse(formula(x))}),
+  AIC = sapply(c(fits_no_mixed,fits_mixed),function(x) AIC(x)),
+  dAIC = as.vector(bbmle::AICtab(fit1,fit2,fit3,fit4)$dAIC)
+  )
+plotAIC = ggplot(AICs,aes(models,AIC)) + 
+  geom_bar(stat="identity") + 
+  theme(axis.text.x = element_text(angle=45,hjust=1)) +
+  ggtitle("AIC for each model")
+
+plotdAIC = ggplot(AICs,aes(models,dAIC)) + 
+  geom_bar(stat="identity") + 
+  theme(axis.text.x = element_text(angle=45,hjust=1)) +
+  ggtitle("Changes in AIC between models")
+
+grid.arrange(plotAIC,plotdAIC,ncol=2)
+```
+
+## Compare models with ANOVA
+Here I have a problem.
+Indeed fit1 and fit2 are obtained using a Generalized Linear Model (logit) __without__ random effects.
+In contrast, fit3 and fit4 are obtained using a Generalized Linear Model (logit) __with__ random effects.
+Thus, I cannot get a p-value to compare fit2 and fit3!!
+```{r}
+# Model comparison with Likelihood Ratio Test
+anova(fit1,fit2,test = "LRT") # intercept only compared to accession model
+anova(fit2,fit3,test = "LRT") # accession only compared to accession + random effect of the plant
+```
+
+## Extract coefficients from the best model
+```{r Convert to odds ratio}
+# extract coefficients
+coefs = as.data.frame(summary(fit2)$coefficients)
+colnames(coefs)=c("coeff","stderr","zval","pval")
+coefs$accession = sub("^accession",replacement = "",x = row.names(coefs))
+coefs$accession[1] = "Intercept"
+
+# convert coefficients to probabilities (exp(B0 + Bi*Xi=1)/[1+exp(B0 + Bi*Xi=1)]
+coefs$prob = sapply(coefs$coeff,function(x) {plogis(x)})
+
+# add confidence interval limits to the coefs (95% confidence)
+coefs$lower = sapply(confint(fit2)[,1],function(x) {plogis(x)})
+coefs$upper = sapply(confint(fit2)[,2],function(x) {plogis(x)})
+
+# add species
+coefs = dplyr::left_join(coefs,accession2species)
+
+# plot by increasing probability to die
+coefs = coefs[order(coefs$prob),]
+coefs$accession = factor(coefs$accession,levels = coefs$accession)
+probas = ggplot(coefs,aes(accession,prob)) + 
+  geom_point(aes(accession,prob,colour=coefs$species)) +
+  geom_errorbar(ymin = coefs$lower,ymax=coefs$upper,width=0.3) +
+  theme(axis.text.x = element_text(angle=45,hjust=1)) +
+  labs(y = "Whitefly death probability") +
+  scale_y_continuous(limits=c(0,1)) 
+print(probas)
+
+# save plot into a file
+ggsave(filename = file.path(resdir,"probability2die.png"),plot = probas,width=10,height=5,dpi = 400)
+```
+```
+
+
+# Session info
+```{r}
+sessionInfo()
+```
+

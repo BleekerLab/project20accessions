@@ -1,0 +1,220 @@
+---
+title: "Toxicity assay on whitefly"
+author: "Marc Galland"
+date: "`r Sys.Date()`"
+output:
+    html_document:
+        number_sections: yes
+        toc: yes
+        toc_depth: 2  
+params:
+  datafile: "../../../../results/01.bioassays/wf/20161104_wf_toxicity_assay/results.txt"
+  resultDir: "~/SURFdrive/trichome_team/11.analysis/bioassays/wf/20161104_wf_toxicity_2tridecanone/"
+---
+# Introduction
+This script is intended to analyse so-called __toxicity assays__ where insects are treated with a certain dose of a compound and the number of surviving insects is measured after a certain time (24h for instance). 
+
+We want to calculate the probability for a fly to die (Yi=1) for a given dose (Xi= dose value) 
+
+The input table has to be tabulated (columns separated by tabulation)
+
+sample|dose|alive|dead
+------|---------|-----|----
+Ctrl-1| Control | 25  | 5
+Ctrl-2| Control | 22  | 3
+Mock-2| Mock    | 20  | 3
+0.2-1 | 0.2µM   | 10  | 12
+
+For model fitting, the first condition (here `Control`) will be used as the _Intercept_
+
+
+# Setup
+
+## Knitr
+```{r setup, warning=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo=TRUE,message=FALSE,warning=FALSE,cache=FALSE,fig.align="center")
+```
+
+## Load libraries and set result directory
+```{r Load librairies, echo=TRUE,results='hide',message=FALSE,warning=FALSE}
+#library(reshape2)
+#library(plyr)
+#library(dplyr)
+library(lme4)
+#library(bbmle)
+#library(formula.tools)
+library(gridExtra)
+library(ggplot2)
+```
+
+```{r creates result directory}
+# creates result directory if it doesn't exist (hide warnings that pop out if it exists)
+resdir = params$resultDir
+dir.create(resdir,showWarnings = F)
+
+# empty result directory
+unlink(resdir)  
+```
+
+## data import + show first lines of the table
+```{r import data, tidy=FALSE}
+wf = read.delim(params$datafile,header = T,na.strings = "NA",stringsAsFactors=F)
+print.data.frame(head(wf))
+
+# rename columns
+colnames(wf) = c("sample","condition","alive","dead")
+```
+
+
+## Creation of a whitefly % of survival melted dataframe 
+```{r WF melted dataframe}
+# calculate total number of flies
+wf$total = rowSums(wf[,c("alive","dead")])
+
+# calculate percentage of surviving flies
+wf$percentage = round(wf$alive / wf$total *100,digits = 0)
+```
+
+# Boxplots
+```{r Boxplots, echo=FALSE}
+# get ordering of the dose (increasing concentrations)
+conditionOrder = unique(wf$condition)
+
+# condition as factor (and not as number)
+#wf$condition = factor(wf$condition)
+#levels(wf$condition) = conditionOrder
+
+# make the plot
+p <- ggplot(data = wf,aes(x = condition,y = percentage,fill=condition)) +
+  geom_boxplot() +
+  #geom_boxplot(aes(group = cut_width(condition,width = 1))) +
+  stat_summary(fun.y="mean",geom="point",shape=23,size=2,fill="white") +
+  theme(axis.text.x = element_text(angle=0,hjust=1,vjust=1)) + 
+  theme(plot.title = element_text(size=18)) +
+  theme(legend.title=element_blank()) +
+  guides(fill=FALSE) +
+  labs(x = "Condition",y = "Whitefly survival after 24h (%)") + 
+  scale_x_discrete(limits=conditionOrder)
+
+# print the plot in the final document
+print(p)
+
+# save plot into a file
+ggsave(filename = file.path(resdir,"boxplot_wf_survival.png"),plot = p,width=10,height=5,dpi = 400)
+```
+
+# Logistic regression 
+
+## Remove missing values
+```{r Fit models}
+# remove missing values
+wf = na.omit(wf)
+
+# convert to factor and set first condition (should be control)
+wf$condition = as.factor(wf$condition)
+wf = within(wf,condition <- relevel(condition,ref = conditionOrder[[1]]))
+```
+
+## Fit null model
+```{r Fit null model}
+# intercept only model (no effect of the condition)
+fit1 = glm(cbind(dead,total-dead) ~ 1,data = wf,family = binomial(link = logit)) 
+```
+
+## Fit condition model
+```{r fit complete model}
+# model with the condition of the compound tested
+fit2 = glm(cbind(dead,total-dead) ~ 1 + condition, data=wf, family = binomial(link = logit)) 
+```
+
+## Compare models (Deviance and AIC plots)
+AIC is an information criteria. It can be compared across different models.
+A minimal AIC value should be looked for.
+
+[http://data.princeton.edu/R/glms.html](From German Rodriguez Princeton University)
+> Selection of terms for deletion or inclusion is based on Akaike's information criterion (AIC). 
+> R defines AIC as
+> –2 maximized log-likelihood + 2 number of parameters
+
+```{r Compare models}
+# put all models in a list
+fits = list(fit1,fit2)
+
+# gather deviances and plot
+deviances = c(deviance(fit1),deviance(fit2))
+
+# plot AICs and dAICs (differences between AICs) 
+AICs = cbind.data.frame(
+  models = sapply(fits,function(x) {deparse(formula(x))}),
+  AIC = sapply(fits,function(x) AIC(x)),
+  dAIC = as.vector(bbmle::AICtab(fit1,fit2)$dAIC)
+  )
+
+plotAIC = ggplot(AICs,aes(models,AIC)) + 
+  geom_bar(stat="identity") + 
+  theme(axis.text.x = element_text(angle=45,hjust=1)) +
+  ggtitle("AIC for each model")
+
+plotdAIC = ggplot(AICs,aes(models,dAIC)) + 
+  geom_bar(stat="identity") + 
+  theme(axis.text.x = element_text(angle=45,hjust=1)) +
+  ggtitle("Changes in AIC between models")
+
+grid.arrange(plotAIC,plotdAIC,ncol=2)
+
+ggsave(filename = file.path(resdir,"AIC.png"),plot = plotAIC,width = 7,height = 5,dpi = 400)
+ggsave(filename = file.path(resdir,"dAIC.png"),plot = plotAIC,width = 7,height = 5,dpi = 400)
+```
+
+## Compare models with ANOVA
+Test (with Chi2 test) if the models significantly differ (based on variance explained)
+```{r anova}
+# Model comparison with Likelihood Ratio Test
+anova(fit1,fit2,test = "LRT") # null model compared to condition model
+```
+
+
+```{r extract coefs}
+# Extract coefficients from the best model
+# extract coefficients
+coefs = as.data.frame(summary(fit2)$coefficients)
+colnames(coefs)=c("coeff","stderr","zval","pval")
+coefs$condition = sub("^condition",replacement = "",x = row.names(coefs))
+row.names(coefs) = NULL
+coefs[which(coefs$condition == "(Intercept)"),]$condition <- "untreated"
+coefs$condition = factor(coefs$condition,levels = conditionOrder)
+# convert coefficients to probabilities (exp(B0 + Bi*Xi=1)/[1+exp(B0 + Bi*Xi=1)]
+coefs$prob = sapply(coefs$coeff,function(x) {plogis(x)})
+
+# add confidence interval limits to the coefs (95% confidence)
+coefs$lower = sapply(confint(fit2)[,1],function(x) {plogis(x)})
+coefs$upper = sapply(confint(fit2)[,2],function(x) {plogis(x)})
+
+# which conditions have the significant pvalues?
+coefs$text = NA
+coefs[which(coefs$pval > 0.01),]$text <- "ns"
+coefs[which(coefs$pval < 0.01),]$text <- "***"
+
+# plot by increasing probability to die
+coefs = coefs[order(coefs$condition),]
+probas = ggplot(coefs,aes(condition,prob,label=text)) + 
+  geom_point() +
+  geom_errorbar(ymin = coefs$lower,ymax=coefs$upper,width=0.2) +
+  labs(y = "Whitefly death probability",x="Dose") +
+  # add pvalues
+  geom_text(aes(x = condition,y = upper+0.04*upper),size=5) +  
+  guides(fill=FALSE) +
+  theme(axis.text.x = element_text(angle=0,hjust=1)) +
+  theme(legend.title=element_blank()) +
+  scale_y_continuous(limits=c(0,1))
+  
+# print and save plot
+print(probas)
+ggsave(filename = file.path(resdir,"proba2die.png"),width = 7,height = 5,dpi = 500)
+```
+
+# Session info
+```{r}
+sessionInfo()
+```
+
