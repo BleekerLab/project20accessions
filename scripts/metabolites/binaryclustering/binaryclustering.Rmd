@@ -1,0 +1,142 @@
+---
+title: "Clustering of binary variables"
+author: "Marc Galland"
+date: "`r Sys.Date()`"
+output:
+    html_document:
+        number_sections: yes
+        toc: yes
+        toc_depth: 2
+        keep_md: true
+params:
+  data: "inputdata/20160916_acylsugars.txt"
+  species: "../../../data/accession2species.txt"
+  resdir: "results"
+---
+# Setup
+
+## Knitr
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=FALSE,warning=FALSE,message=FALSE,fig.align="center") 
+```
+
+## Load libraries
+```{r Load libraries}
+# ggplot2
+if (is.element('ggplot2', installed.packages()[,1]))
+{
+  suppressPackageStartupMessages(require('ggplot2'));
+} else
+{
+  install.packages('ggplot2');
+  suppressPackageStartupMessages(library('ggplot2'));
+}
+
+# dplyr
+if (is.element('dplyr', installed.packages()[,1]))
+{
+  suppressPackageStartupMessages(require('dplyr'));
+} else
+{
+  install.packages('dplyr');
+  suppressPackageStartupMessages(library('dplyr'));
+}
+
+# ggdendro
+if (is.element('ggdendro', installed.packages()[,1]))
+{
+  suppressPackageStartupMessages(require('ggdendro'));
+} else
+{
+  install.packages('ggdendro');
+  suppressPackageStartupMessages(library('ggdendro'));
+}
+
+# ade4
+if (is.element('ade4', installed.packages()[,1]))
+{
+  suppressPackageStartupMessages(require('ade4'));
+} else
+{
+  install.packages('ade4');
+  suppressPackageStartupMessages(library('ade4'));
+}
+```
+
+## result directory
+```{r}
+resdir = params$resdir
+dir.create(resdir,showWarnings = F)
+unlink(resdir,recursive = T)
+```
+
+## Load data
+```{r Load data}
+# check file extension to load file
+if (tools::file_ext(params$data) == "csv"){
+  df = read.csv(params$data,header = T,stringsAsFactors = F)
+} else if (tools::file_ext(params$data) == "txt") {
+    df = read.delim(params$data,header=T,stringsAsFactors = F)
+} else {
+    print("input data needs to be comma-separated (.csv) or tabulated (.txt)")
+  }
+```
+
+## load species/accession
+```{r species accession correspondence}
+accession2species = read.delim(params$species,header = T,sep="\t",stringsAsFactors = F)
+```
+
+## replace values > 0 by 1
+```{r replace values above zero by 1}
+
+# util function
+replacebyone <- function(x) {
+  if (x > 0){
+    x <- 1
+    return(x)
+} else if (x == 0) {
+    x <- 0
+    return(x)
+} else {
+    print("you have a problem in your input data (values should be >= 0)")
+}
+}
+
+# replace NAs by 0
+df[is.na(df)] <- 0
+
+# make df binary (0 or 1) by applying it to the whole matrix
+row.names(df)=df$accession
+mat = apply(as.matrix(df[,2:ncol(df)]),MARGIN = 1:2,FUN = replacebyone)
+```
+
+# Dendrograms
+```{r dendrogram}
+# select method for distance calculation 
+# 1 = Jaccard (size of intersection/size of union)
+dist = dist.binary(mat,method=1)
+
+# hierarchical clustering  
+hclust.mat = hclust(dist,method = "average")
+
+# plot using base graph
+maxy = round(max(hclust.mat$height) + 0.1*max(hclust.mat$height),digits = 1)
+plot(hclust.mat,ylab = "Jaccard distance",xlab = "Accessions")
+
+#save
+dir.create(resdir)
+unlink(resdir,recursive = T)
+
+#g <- ggdendrogram(hclust.mat,rotate = T)
+#ggsave(filename = "dendrogram.svg",plot = g,width = 7,height=5,dpi = 400)
+#svg(filename = file.path(resdir,"dendogram.svg"))
+#plot(hclust.mat,ylab = "Jaccard distance",xlab = "Accessions",ylim=c(0,maxy))
+#dev.off()
+```
+
+# Session info
+```{r session info}
+sessionInfo()
+```
+
