@@ -1,2 +1,8 @@
 results/
 analysis/
+<<<<<<< HEAD
+*.txt
+scripts/metabolites/binaryclustering/inputdata/
+=======
+.DS_store
+>>>>>>> origin/master
