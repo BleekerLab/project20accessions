@@ -1,0 +1,204 @@
+"""
+This Snakemake pipeline will take Proton Ion RNA-Seq reads, map them to a reference sequence (e.g. Heinz tomato genome) and output an indexed sorted BAM file per sample
+"""
+import os
+from Bio import SeqIO
+import gzip
+import pandas as pd
+
+################
+## Configuration
+################
+
+#config
+configfile: "config.yaml"
+
+# directories
+FQ_DIR = config["fastqdir"]
+WORKING_DIR = config["workdir"]
+
+# samples
+SAMPLES, = glob_wildcards(FQ_DIR + "{sample}.fastq.gz") 
+#ACCESSIONS =["C32","LA0407","LA0716","LA1278","LA1364","LA1401","LA1578","LA1777","LA1840","LA1954","LA2133","LA2172","LA2386","LA2695","LA4024","LYC140","LYC38","LYC4","LYC4934","PI127826"]
+
+# read length parameters
+MIN_LEN = 25
+MAX_LEN = 100
+
+# genome sequence ref 
+GENOME_FASTA = config["refs"]["genome"]
+GENOME_NAME = os.path.basename(GENOME_FASTA)
+
+# annotations
+GTF = config["refs"]["gtf"]
+GFF = config["refs"]["gff"]
+
+# STAR 
+STAR_GENOME_DIR = config["refs"]["star"]
+STAR_PARAMS_DICT = config["star"]
+STAR_PARAMS = " ".join(list(config["star"].values()))
+
+# Bowtie 
+BOWTIE2_INDEX = config["bowtie2"]["index"]
+BOWTIE_PARAMS = " ".join(list(config["bowtie2"]["params"].values()))
+
+# Picard
+PICARD_DIR = config["picard"]
+
+# additional parameters
+THREADS = 10 # don't be too greedy and let the others work (do not use all threads)
+
+#################### Outputs
+BAMS = expand("results/{sample}.bam",sample=SAMPLES)
+
+rule all:
+	input:
+		BAMS
+	message:"all done"
+
+##############################################################
+## Map reads to Solyc genome with STAR + Bowtie and merge BAMs
+##############################################################
+rule merge_STAR_and_bowtie:
+    input:
+        star = WORKING_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam",
+        bowtie = WORKING_DIR + "bowtie/{sample}_bowtie_aln.sorted.bam"
+    output:
+        "results/{sample}.bam"
+    message: "Merging bam files for {wildcards.sample}"
+    shell: 
+         "java -jar {PICARD_DIR}/MergeSamFiles.jar "
+         "USE_THREADING=true MSD=true AS=true "
+         "I={input.star} "
+         "I={input.bowtie} "
+         "O={output};" 
+         "samtools index {output}"
+
+rule aln_to_genome_with_bowtie:
+    input:
+        WORKING_DIR + "star/{sample}_unmapped.fastq"
+    output:
+        WORKING_DIR + "bowtie/{sample}_bowtie_aln.sorted.bam"
+    message: "Aligning reads of sample {wildcards.sample} with bowtie2 to {GENOME_NAME}"       
+    shell:
+        "bowtie2 {BOWTIE_PARAMS} "
+        "-x {BOWTIE2_INDEX} "
+        "-U {input} | "
+        "samtools view -bS - | samtools sort - " + WORKING_DIR + "bowtie/{wildcards.sample}_bowtie_aln.sorted"
+
+rule rename_STAR_unmapped:
+    input:
+        WORKING_DIR + "star/{sample}_Unmapped.out.mate1"
+    output:
+        WORKING_DIR + "star/{sample}_unmapped.fastq"
+    message:"renaming {wildcards.sample} unmapped fastq file"
+    shell:"mv {input} {output}"
+
+rule map_to_genome_with_STAR:
+    input:
+        read = WORKING_DIR + "trim/{sample}.fastq",
+        ref= WORKING_DIR + "star2pass/",
+        STAR_2PASS = [WORKING_DIR + "star2pass/"+f for f in ["chrLength.txt","chrNameLength.txt","chrName.txt","chrStart.txt","Genome","genomeParameters.txt","SA","SAindex"]]
+    output:
+        WORKING_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam",
+        WORKING_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam.bai",
+        WORKING_DIR + "star/{sample}_Log.final.out",
+        WORKING_DIR + "star/{sample}_Signal.Unique.str1.out.bg", 
+        WORKING_DIR + "star/{sample}_Unmapped.out.mate1"
+    message:"mapping {wildcards.sample} reads to {GENOME_NAME} using STAR"
+    params:
+        prefix = WORKING_DIR + "star/{sample}_",
+        maxmismatches = config["star"]["mismatches"],
+        unmapped = config["star"]["unmapped"]	,
+        multimappers = config["star"]["multimappers"],
+        matchNminoverLread = config["star"]["matchminoverlengthread"],
+	outSamType = config["star"]["samtype"],
+        outWigType = config["star"]["outwigtype"],
+        outWigStrand = config["star"]["outwigstrand"],
+        outWigNorm = config["star"]["outwignorm"]
+    shell:
+        "STAR --genomeDir {input.ref} "
+        "--readFilesIn {input.read} "
+        "--outFilterMultimapNmax {params.multimappers} "
+        "--outFilterMismatchNmax {params.maxmismatches} "
+        "--outFilterMatchNminOverLread {params.matchNminoverLread} "
+        "--alignEndsType EndToEnd "
+        "--runThreadN {THREADS} "
+        "--outReadsUnmapped {params.unmapped} "
+        "--outFileNamePrefix {params.prefix} "
+        "--outSAMtype {params.outSamType} "
+        "--outWigType {params.outWigType} "
+        "--outWigStrand {params.outWigStrand} "
+        "--outWigNorm {params.outWigNorm};"
+        "samtools index {output[0]}"
+
+#############
+## STAR index
+#############
+rule star2pass_index:
+    input:
+        sjdb = WORKING_DIR + "star1pass/SJ.concatenated.out.tab",
+        directory = WORKING_DIR + "star2pass/", 
+        ref= GENOME_FASTA
+    output:
+        STAR_2PASS = [WORKING_DIR + "star2pass/"+f for f in ["chrLength.txt","chrNameLength.txt","chrName.txt","chrStart.txt","Genome","genomeParameters.txt","SA","SAindex"]]
+    message: "STAR 2nd pass: generating genome index"	
+    shell:
+        "STAR --runMode genomeGenerate "
+        "--genomeDir {input.directory} "
+        " --genomeFastaFiles {input.ref} "
+        "--runThreadN {THREADS} "
+        " --sjdbFileChrStartEnd {input.sjdb} "
+        "--sjdbOverhang 99 "
+        "--sjdbGTFfile {GTF};"
+        "touch -h {output}"
+
+rule create_star2pass_directory:
+    output:
+        WORKING_DIR + "star2pass/"
+    message:"create directory for star2pass"
+    shell:
+        "mkdir -p " + WORKING_DIR + "star2pass/"
+
+rule concatenate_sjdb:
+    input:
+        expand(WORKING_DIR + "star1pass/{sample}_SJ.out.tab",sample=SAMPLES),
+    output:
+        WORKING_DIR + "star1pass/SJ.concatenated.out.tab"
+    message:"concatenating splice junctions from different samples "
+	shell:"cat {input} >> {output}"
+
+rule star1pass_align:
+    input:
+        reads = WORKING_DIR + "trim/{sample}.fastq",
+        ref = STAR_GENOME_DIR
+    output:
+        WORKING_DIR + "star1pass/{sample}_SJ.out.tab"
+    message:"STAR 1st pass: aligning {wildcards.sample} reads to generate splice junction files"
+    params:
+        WORKING_DIR + "star1pass/{sample}_"	
+    shell: 
+        "mkdir -p {WORKING_DIR}star1pass/ ;"		
+        "STAR --runMode alignReads --genomeDir {input.ref} "
+        "--readFilesIn {input.reads} --outFileNamePrefix {params} "
+        "--outFilterIntronMotifs RemoveNoncanonical --runThreadN {THREADS}"
+
+################ 
+## Read trimming 
+################
+rule trim_reads:
+    input:
+        FQ_DIR + "{sample}.fastq.gz"
+    output:
+        WORKING_DIR + "trim/{sample}.fastq"
+    message: "Trimming reads shorter than {0} and longer than {1}".format(MIN_LEN,MAX_LEN)
+    shell:"""
+          echo trimming {wildcards.sample} reads
+	  zcat {input} | paste - - - - | awk 'length($2)  >= {MIN_LEN} && length($2) <= {MAX_LEN}' |sed 's/\\t/\\n/g' > {output}
+	  """
+
+
+
+
+
+

@@ -1,0 +1,45 @@
+---
+workdir:  "scratch/"
+threads:   10
+fastqdir:  "/home/mgalland/data/01_sequencing_runs/20160216_mRNAs_20_accessions/" 
+
+# reference sequences and annotations
+refs:
+  genome:  "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG2.3/Solanum_lycopersicum.SL2.40.22.dna.genome.names_modified.fa"
+  gff:     "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG2.3/Solanum_lycopersicum.SL2.40.22.names_modified.gff3"
+  gtf:     "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG2.3/Solanum_lycopersicum.SL2.40.22.names_modified.sorted.gtf"
+  star:    "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG2.3/star_SL2.40_genome/"
+
+
+# Parameters for STAR
+star:
+  # type of output
+  samtype: 'BAM SortedByCoordinate'
+  # wig type
+  outwigtype: 'bedGraph'  
+  # strandness of wig file
+  outwigstrand: 'Stranded' 
+  # normalization method for wig file (None or RPM = reads per million). 
+  # RPM = read raw count / total number of uniquely mapping reads *10⁶  (for ".Unique." signal files)
+  # RPM = read raw count / total number of unique and multiple mapping reads (for ".UniqueMultiple." signal files)
+  # These RPM normalizations are used by the ENCODE consortium. 
+  outwignorm: 'RPM'
+  # alignment will be output only if it has less mismatches than this number
+  mismatches: '2'
+  # unmapped accepted values are None or Fastx (to output fastq files of unmapped reads)
+  unmapped: 'Fastx' 
+  # maximum number of loci the read is allowed to map to
+  multimappers: '10'
+  # alignment will be output if percentage of read length is higher than this value (66% of 2x100bp = 132 nucleotides)
+  matchminoverlengthread: '0.66'
+
+# Parameters for Bowtie2
+bowtie2:
+  index:  "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG2.3/bowtie2_SL2.40_genome_index/"
+  params:
+    mode:        "--local"
+    sensitivity: "--very-sensitive-local"
+    verbose:     "-q"
+
+# Picard
+picard: "/zfs/datastore0/software/src/picard-tools/"
