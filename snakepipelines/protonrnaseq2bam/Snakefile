@@ -60,7 +60,7 @@ THREADS = 10 # don't be too greedy and let the others work (do not use all threa
 ##########
 ## Outputs
 ##########
-ACCESSIONS =  ["LYC4","LA4024","LA1954","LA1578","LA2133","LA0716","LYC140","LA1278","LYC4934","LA1777","LA1840","LA2695","LYC38","LA1401","PI127826","LA2172","LA1364","LA2386","LA0407"]
+ACCESSIONS =  ["LYC4","LA4024","LA1954","LA1578","LA2133","LA0716","LYC140","LA1278","LA1718","LA1777","LA1840","LA2695","LYC38","LA1401","PI127826","LA2172","LA1364","LA2386","LA0407"]
 
 BAMS = expand("results/{sample}.bam",sample=SAMPLES)
 BIGWIGS = expand("{sample}.bw",sample=SAMPLES)
@@ -74,50 +74,6 @@ rule all:
 #################################
 ## copy master files and clean up
 #################################
-
-
-###########################################
-## Convert individual sample BAMs to BigWig
-###########################################
-rule bedgraph2bigwig:
-    input:
-        bedgraph = "{accession}.sorted.bg",
-        sizes = "chromsizes.tab"
-    output:
-        "{accession}.bw"
-    message:"converting {wildcards.accession} bedgraph to bigwig"
-    shell:
-        "bedGraphToBigWig {input.bedgraph} {input.sizes} {output}"
-
-rule copy_chromosome_sizes:
-    input:
-        CHROM_SIZES
-    output:
-        temp("chromsizes.tab")
-    shell:"cp {input} {output}"
-        
-rule sort_bedgraph:
-    input:
-        "results/{accession}.bg"
-    output:
-        temp("{accession}.sorted.bg")
-    message:"sorting {input} file"
-    shell:
-        "bedSort {input} {output}"
-
-rule bam2bedgraph:
-    input:
-        "results/{accession}.bam"
-    output:
-        "results/{accession}.bg"
-    message:"converting {wildcards.accession} bam to bedgraph"
-    run:
-        scaling_factor = subprocess.check_output("samtools view -F 0x904 -c " + input[0],shell=True)
-        scaling_factor = scaling_factor.strip().decode()
-        shell("bedtools genomecov -split -bg -scale " + str(scaling_factor) + " -ibam {input} > {output}")
-
-  
-
 
 ##############################################################
 ## Map reads to Solyc genome with STAR + Bowtie and merge BAMs
