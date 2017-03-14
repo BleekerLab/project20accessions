@@ -21,7 +21,7 @@ ACCESSIONS,REPLICATES, = glob_wildcards(FQ_DIR + "{accession}_{replicate}.fastq.
 ## Output
 #########
 MERGED_BAMS = expand("results/merged/{accession}.merged.bam",accession=ACCESSIONS)
-BIGWIGS = expand("results/{accession}.bw",accession=ACCESSIONS)
+BIGWIGS = expand("results/bigwigs/{accession}.sorted.bg.bw",accession=ACCESSIONS)
 
 rule all:
 	input:
@@ -33,28 +33,18 @@ rule all:
 ###########################################
 ## Convert individual sample BAMs to BigWig
 ###########################################
-rule move_bigwigs:
-    input:
-        "results/bigwigs/{accession}.sorted.bg.bw"
-    output:
-        "results/{accession}.bw"
-    shell:"mv {input} {output}"
-
 rule bedgraph2bigwig:
     input:
-        bedgraph = expand("results/bigwigs/{accession}.sorted.bg",accession=ACCESSIONS)
+        bedgraph = "results/bigwigs/{accession}.sorted.bg",
         sizes = "chromsizes.tab"
     output:
-        expand("results/bigwigs/{accession}.sorted.bg.bw",accession=ACCESSIONS)
-    message:"converting {wildcards.accession} bedgraph to bigwig"
-    params:
-        "results/bigwigs/"
+        "results/bigwigs/{accession}.sorted.bg.bw"
     shell:
         """
-        for f in results/bigwigs/*.sorted.bg
+        for f in {input.bedgraph};
         do
             echo "converting $f file to bigwig format"
-            bedGraphToBigWig $f {input.sizes} results/bigwigs/$f.bw
+            bedGraphToBigWig $f {input.sizes} $f.bw
         done
         """
 
@@ -65,14 +55,6 @@ rule copy_chromosome_sizes:
         temp("chromsizes.tab")
     shell:"cp {input} {output}"
         
-#rule sort_bedgraph:
-#    input:
- #       "{accession}.bg"
-  #  output:
-#        "results/bigwigs/{accession}.sorted.bg"
-#    message:"sorting {input} file"
-#    shell:
-#        "bedSort {input} {output}"
 
 rule bam2bedgraph:
     input:
@@ -82,12 +64,10 @@ rule bam2bedgraph:
     message:"converting {wildcards.accession} bam to bedgraph"
     params:
         "{accession}.bg"
-    run:
-        scaling_factor = subprocess.check_output("samtools view -F 0x904 -c " + input[0],shell=True)
-        scaling_factor = scaling_factor.strip().decode()
-        shell("bedtools genomecov -split -bg -scale " + str(scaling_factor) + " -ibam {input} > {params}")
-        shell("bedSort {params} {output}")
-        shell("rm {params}")
+    shell:
+        "bedtools genomecov -split -bg -ibam {input} > {params};"
+        "bedSort {params} {output};"
+        "rm {params}"
 
 
 #########################################
