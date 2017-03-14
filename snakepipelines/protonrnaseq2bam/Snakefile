@@ -48,7 +48,7 @@ STAR_PARAMS_DICT = config["star"]
 STAR_PARAMS = " ".join(list(config["star"].values()))
 
 # Bowtie 
-BOWTIE2_INDEX = config["bowtie2"]["index"]
+BOWTIE2_INDEX = config["refs"]["bowtie"]
 BOWTIE_PARAMS = " ".join(list(config["bowtie2"]["params"].values()))
 
 # Picard
