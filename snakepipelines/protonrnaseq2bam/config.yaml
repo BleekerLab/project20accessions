@@ -1,15 +1,18 @@
 ---
-workdir:  "scratch/"
+workdir:  "/zfs/scratch/mgalland_temp/proton2bam/scratch/"
 threads:   10
-fastqdir:  "/home/mgalland/data/01_sequencing_runs/20160216_mRNAs_20_accessions/" 
+fastqdir:  "/home/mgalland/data/01_sequencing_runs/20160216_mRNAs_20_accessions/"
+
+#"testdata/" 
 
 # reference sequences and annotations
 refs:
-  genome:  "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG2.3/Solanum_lycopersicum.SL2.40.22.dna.genome.names_modified.fa"
-  gff:     "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG2.3/Solanum_lycopersicum.SL2.40.22.names_modified.gff3"
-  gtf:     "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG2.3/Solanum_lycopersicum.SL2.40.22.names_modified.sorted.gtf"
-  star:    "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG2.3/star_SL2.40_genome/"
-
+  genome:  "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/S_lycopersicum_chromosomes.3.00.fa"
+  gff:     "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/ITAG3.0_gene_models.gff"
+  gtf:     "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/ITAG3.0_gene_models.gtf"
+  star:    "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/star_genome/"
+  bowtie:  "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/bowtie_index/S_lycopersicum_chromosomes.3.00.fa"
+  chromsizes: "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/chromSizes.txt"
 
 # Parameters for STAR
 star:
@@ -18,7 +21,7 @@ star:
   # wig type
   outwigtype: 'bedGraph'  
   # strandness of wig file
-  outwigstrand: 'Stranded' 
+  outwigstrand: 'Unstranded' 
   # normalization method for wig file (None or RPM = reads per million). 
   # RPM = read raw count / total number of uniquely mapping reads *10⁶  (for ".Unique." signal files)
   # RPM = read raw count / total number of unique and multiple mapping reads (for ".UniqueMultiple." signal files)
@@ -35,7 +38,6 @@ star:
 
 # Parameters for Bowtie2
 bowtie2:
-  index:  "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG2.3/bowtie2_SL2.40_genome_index/"
   params:
     mode:        "--local"
     sensitivity: "--very-sensitive-local"
