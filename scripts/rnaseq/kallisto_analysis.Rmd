@@ -54,7 +54,7 @@ options(mc.cores = 4L)
 ## Load configuration file and select result directory
 ```{r, warning=FALSE}
 #config = yaml::yaml.load_file("kallistoconfig.yaml")
-````
+```
 
 ## Create result directories (one per type of data)
 ```{r Create result directories}
@@ -107,6 +107,7 @@ so = sleuth_prep(s2c, ~ accession)
 
 # Extraction of the normalized expression data 
 df = kallisto_table(so,normalized = T,use_filtered = T)
+df.notNormalized = kallisto_table(so,normalized=F,use_filtered = T)
 
 # melt
 m_df = melt(df,id.vars=c("sample","accession","target_id"),measure.vars = c(exprUnit))
@@ -116,8 +117,8 @@ m_df = melt(df,id.vars=c("sample","accession","target_id"),measure.vars = c(expr
 ### Correlation heatmap
 ```{r sample correlation heatmap}
 # calculate correlation between samples
-mat = dcast(m_df,target_id ~ sample)
-corMat = cor(mat[-1],method = "pearson")
+matrix4cor = dcast(m_df,target_id ~ sample)
+corMat = cor(matrix4cor[-1],method = "pearson")
 
 # sample correlation heatmap
 # method -- accepted values are "number","circle","square","shade"...
@@ -342,6 +343,14 @@ so = sleuth_results(so,"null:full","lrt")
 ```{r}
 date = strsplit(format(Sys.time()),split = " ")[[1]][1]
 resdir = saveRDS(so,file.path(resdir,paste(date,"sleuth_object.rds",sep = "_")))
+```
+
+# Get normalization factors
+```{r get norm factors}
+mat4normfactors = dcast(df.notNormalized,formula = target_id ~ accession,fun.aggregate = mean,value.var = "est_counts")
+normFactors = norm_factors(mat4normfactors[,2:ncol(mat4normfactors)])
+normFactors = as.data.frame(normFactors)
+write.table(normFactors,file.path(resdir,"normFactors.txt"),sep="\t",quote=F,row.names = T)
 ```
 
 # Session info
