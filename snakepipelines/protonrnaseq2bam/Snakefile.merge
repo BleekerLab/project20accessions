@@ -1,0 +1,97 @@
+"""
+This Snakemake pipeline will take sorted bam files (one per sample) and merge the BAM files that correspond to the same genotypes. 
+Will also generate bedgraph and bigwig files from the merged BAM file.
+"""
+import os
+import glob
+import subprocess 
+
+# config
+configfile: "config.yaml"
+
+# fastq directory
+FQ_DIR = config["fastqdir"]
+
+# chromosome sizes
+CHROM_SIZES = config["refs"]["chromsizes"]
+
+ACCESSIONS,REPLICATES, = glob_wildcards(FQ_DIR + "{accession}_{replicate}.fastq.gz")
+
+#########
+## Output
+#########
+MERGED_BAMS = expand("results/merged/{accession}.merged.bam",accession=ACCESSIONS)
+BIGWIGS = expand("results/bigwigs/{accession}.sorted.bg.bw",accession=ACCESSIONS)
+
+rule all:
+	input:
+		MERGED_BAMS,
+		BIGWIGS
+	message:"successfully merged BAM files"
+
+
+###########################################
+## Convert individual sample BAMs to BigWig
+###########################################
+rule bedgraph2bigwig:
+    input:
+        bedgraph = "results/bigwigs/{accession}.sorted.bg",
+        sizes = "chromsizes.tab"
+    output:
+        "results/bigwigs/{accession}.sorted.bg.bw"
+    shell:
+        """
+        for f in {input.bedgraph};
+        do
+            echo "converting $f file to bigwig format"
+            bedGraphToBigWig $f {input.sizes} $f.bw
+        done
+        """
+
+rule copy_chromosome_sizes:
+    input:
+        CHROM_SIZES
+    output:
+        temp("chromsizes.tab")
+    shell:"cp {input} {output}"
+        
+
+rule bam2bedgraph:
+    input:
+        "results/merged/{accession}.merged.bam"
+    output:
+        temp("results/bigwigs/{accession}.sorted.bg")
+    message:"converting {wildcards.accession} bam to bedgraph"
+    params:
+        "{accession}.bg"
+    shell:
+        "bedtools genomecov -split -bg -ibam {input} > {params};"
+        "bedSort {params} {output};"
+        "rm {params}"
+
+
+#########################################
+## Merge bam files from the same genotype
+#########################################
+
+# to get wildcards for accessions
+def get_bam_files(wildcards):
+    "this function takes a list of bam files to merge. returns wildcards"
+    return glob.glob("results/" + wildcards.accession + "_[0-9].bam")
+
+rule merge_bams_from_same_accession:
+    input:
+        get_bam_files	
+    output:
+        "results/merged/{accession}.merged.bam"
+    shell:
+        "samtools merge -r {output} {input}"
+
+
+#rule merge_bams_from_same_genotype:
+#    input:
+#        merge_bam_files
+#    output:
+#        "results/{accession}.bam"
+#    message:"merging bam files for {wildcards.accession}"
+#    shell: "samtools merge -r {output} {input}"      
