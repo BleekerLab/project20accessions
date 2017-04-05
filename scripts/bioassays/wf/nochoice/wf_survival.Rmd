@@ -8,7 +8,7 @@ output:
         toc: yes
         toc_depth: 2  
 params: 
-  data: "../../../../results/01.bioassays/wf/20160311_wf_5days/20160311_wild.txt"
+  data: "~/surfdrive/trichome_team/06.results_from_xp/Bioassays/wf/2016-03-11_wf_survival_wild_population_5days/20160311_wild.txt"
   species: "../../../../data/accession2species.txt"
 ---
 
@@ -24,27 +24,27 @@ knitr::opts_chunk$set(echo=TRUE,message=FALSE,warning=FALSE,cache=FALSE,fig.alig
 library(reshape2)
 library(plyr)
 library(dplyr)
-library(Hmisc) 
+#library(Hmisc) 
 library(knitr)
 library(lme4)
 library(bbmle)
-library(formula.tools)
-library(gridExtra)
+library(ggplot2)
+#library(formula.tools)
+#library(gridExtra)
+library(svglite)
 ```
 
 ## setup directories
 ```{r}
-inputdata = params$data  
-
 # creates result directory and emtpy files present if they already exists
 resdir = "results"
-dir.create(resdir,showWarnings = F)
-unlink(x = dir(resdir,full.names = T),recursive = T)
+#dir.create(resdir,showWarnings = F)
+#unlink(x = dir(resdir,full.names = T),recursive = T)
 ```
 
 ## data import + show first lines of the table
 ```{r import data, tidy=FALSE}
-wf = read.table(file = inputdata,header = T,sep = "\t",na.strings = "NA",stringsAsFactors=F)
+wf = read.table(file = params$data,header = T,sep = "\t",na.strings = "NA",stringsAsFactors=F)
 ```
 
 # Data wrangling
@@ -94,6 +94,7 @@ print(survival)
 
 # save plot into a file
 ggsave(filename = file.path(resdir,"boxplot_wf_survival.png"),plot = survival,width=10,height=5,dpi = 400)
+ggsave(filename = file.path(resdir,"boxplot_wf_survival.svg"),plot = survival,width=10,height=5)
 ```
 
 # Generalized Linear Mixed Models
@@ -146,9 +147,6 @@ A minimal AIC value should be looked for.
 fits_no_mixed = list(fit1,fit2)
 fits_mixed = list(fit3,fit4)
 
-# gather deviances and plot
-deviances = c(deviance(fit1),deviance(fit2),deviance(fit3),deviance(fit4))
-
 # plot AICs and dAICs (differences between AICs) 
 AICs = cbind.data.frame(
   models = sapply(c(fits_no_mixed,fits_mixed),function(x) {deparse(formula(x))}),
@@ -165,7 +163,7 @@ plotdAIC = ggplot(AICs,aes(models,dAIC)) +
   theme(axis.text.x = element_text(angle=45,hjust=1)) +
   ggtitle("Changes in AIC between models")
 
-grid.arrange(plotAIC,plotdAIC,ncol=2)
+#grid.arrange(plotAIC,plotdAIC,ncol=2)
 ```
 
 ## Compare models with ANOVA
@@ -178,6 +176,20 @@ Thus, I cannot get a p-value to compare fit2 and fit3!!
 anova(fit1,fit2,test = "LRT") # intercept only compared to accession model
 anova(fit2,fit3,test = "LRT") # accession only compared to accession + random effect of the plant
 ```
+
+## Goodness of fit
+```{r goodness of fit}
+Dnull = deviance(fit1)
+
+# gather deviances and plot
+deviances = c(deviance(fit2),deviance(fit3),deviance(fit4))
+barplot(deviances)
+
+# Likelihood ratio R2L
+
+sapply(X = deviances,FUN = function(x){(Dnull - x)/Dnull})
+```
+
 
 ## Extract coefficients from the best model
 ```{r Convert to odds ratio}
@@ -197,19 +209,26 @@ coefs$upper = sapply(confint(fit2)[,2],function(x) {plogis(x)})
 # add species
 coefs = dplyr::left_join(coefs,accession2species)
 
-# plot by increasing probability to die
-coefs = coefs[order(coefs$prob),]
-coefs$accession = factor(coefs$accession,levels = coefs$accession)
-probas = ggplot(coefs,aes(accession,prob)) + 
-  geom_point(aes(accession,prob,colour=coefs$species)) +
-  geom_errorbar(ymin = coefs$lower,ymax=coefs$upper,width=0.3) +
-  theme(axis.text.x = element_text(angle=45,hjust=1)) +
-  labs(y = "Whitefly death probability") +
-  scale_y_continuous(limits=c(0,1)) 
-print(probas)
+# which conditions have the significant pvalues?
+coefs$text = NA
+coefs[which(coefs$pval > 0.01),]$text <- "ns"
+coefs[which(coefs$pval < 0.01),]$text <- "***"
 
-# save plot into a file
-ggsave(filename = file.path(resdir,"probability2die.png"),plot = probas,width=10,height=5,dpi = 400)
+# plot by increasing probability to die
+# coefs = coefs[order(coefs$prob),]
+# coefs$accession = factor(coefs$accession,levels = coefs$accession)
+# probas = ggplot(coefs,aes(accession,prob,label=text)) + 
+#   geom_point(aes(accession,prob,colour=coefs$species)) +
+#   geom_errorbar(ymin = coefs$lower,ymax=coefs$upper,width=0.3) +
+#   theme(axis.text.x = element_text(angle=45,hjust=1)) +
+#   labs(y = "Whitefly death probability") +
+#   scale_y_continuous(limits=c(0,1)) +
+#   geom_text(aes(x = accession,y = upper+0.03*upper),size=4) 
+# print(probas)
+
+# # save plot into a file
+# ggsave(filename = file.path(resdir,"probability2die.png"),plot = probas,width=10,height=5,dpi = 400)
+# ggsave(filename = file.path(resdir,"probability2die.svg"),plot = probas,width=10,height=5)
 ```
 ```
 
