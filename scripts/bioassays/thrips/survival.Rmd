@@ -8,9 +8,9 @@ output:
         toc: yes
         toc_depth: 2  
 params:
-  data: "../../../../../06.results_from_xp/Bioassays/Thrips/20161216_survival/survival_data.txt"
+  data: "~/SURFdrive/trichome_team/06.results_from_xp/Bioassays/thrips/20161216_survival/survival_data.txt"
   resdir: "results"
-  accession2species: "../../../../../07.data/accession2species.txt"
+  accession2species: "~/SURFdrive/trichome_team/07.data/accession2species.txt"
 ---
 ```{r}
 knitr::opts_chunk$set(cache=FALSE,warning=FALSE,message=FALSE,fig.align="center") 
@@ -69,6 +69,16 @@ if (is.element('dplyr', installed.packages()[,1]))
   install.packages('dplyr');
   suppressPackageStartupMessages(library('dplyr'));
 }
+
+# svglite
+if (is.element('svglite', installed.packages()[,1]))
+{
+  suppressPackageStartupMessages(require('svglite'));
+} else
+{
+  install.packages('dplyr');
+  suppressPackageStartupMessages(library('svglite'));
+}
 ```
 
 ## Data import
@@ -111,9 +121,15 @@ fit
 # accession to species correspondence 
 accession2species = read.delim(params$accession2species,header = T,sep = "\t",stringsAsFactors = F)
 
+# convert survfit to dataframe
+#res <- summary(fit)
+#cols <- lapply(c(1:7),function(x)res[x])
+#res.df = do.call(data.frame(res[1:7,]),cols)
+
 # add species
-medians = fit$
-  dplyr::left_join(df,accession2species,by="accession")
+df = read.delim("results/survival.txt",header=T)
+df = dplyr::left_join(df,accession2species,by="accession")
+df = df[which(!is.na(res$species)),]
 
 # order by biggest median survival time
 df = df[order(df$median,decreasing = F),]
@@ -127,6 +143,7 @@ g <- ggplot(df,mapping = aes(x=accession,y=median,fill=species)) +
 
 print(g)
 ggsave("medians.png",plot = g,width = 7,height = 5,dpi=600)
+ggsave("medians.svg",plot = g,width= 7,height = 5)
 
 
 ```
