@@ -6,8 +6,8 @@ Data can come from averages of biological replicates but it is also possible to 
 
 # Usage
 
-1.  To perform the analysis, use the `<randomforest.R>` script. 
-2.  Open a new shell window and type `<Rscript --vanilla  randomforest.R --phenotype myphenotypedata.txt --features myfeaturesdata.txt>`
+1.  To perform the analysis, use the `randomforest.R>` script. 
+2.  Open a new shell window and type `Rscript --vanilla  randomforest.R --phenotype myphenotypedata.txt --features myfeaturesdata.txt>`
 
  takes several arguments:
 
@@ -15,8 +15,8 @@ Data can come from averages of biological replicates but it is also possible to 
 
 ### Input files
 
-*  `<--phenotype>` a tabulated file containing two columns: sample identifiers (id) and phenotypic classes for the samples. 
-*  `<--features>`  a tabulated file containing 
+*  `--phenotype>` a tabulated file containing two columns: sample identifiers (id) and phenotypic classes for the samples. 
+*  `--features>`  a tabulated file containing 
 
 Important: both files should have a column with the same ids. 
 
@@ -45,6 +45,8 @@ PI127826  | 525  | 3 | 0
 LA0716    | 402   | 15 | 1
 
 ### Parameters (to be implemented)
-*  <`--ntrees>` number of trees to be built
-*  <`--pvals`>  p-value threshold (0.05 for instance)
-*  <`--perm`>   number of permutations (to calculate p-values)
+*  `--ntrees>` number of trees to be built
+*  `--pvals`>  p-value threshold (0.05 for instance)
+*  `--perm`>   number of permutations (to calculate p-values)
+
+## 
