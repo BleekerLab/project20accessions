@@ -73,7 +73,7 @@ df$class = as.factor(df$class)
 # Random forest analysis (using default number of trees and features)
 # mtry = number of variables. Will be the square root of number of features
 registerDoMC(cores = opt$threads)
-fit.test = randomForest(formula = class ~ ., data = df,ntree=500) 
+fit.test = randomForest(formula = class ~ ., data = df,ntree=1000) 
 
 # Determine optimal number of trees and optimal number of features
 plot(fit.test$err.rate[,1],type="l",col="red",xlab = "Number of trees",ylab = "OOB error")
@@ -96,20 +96,34 @@ for (i in 1:opt$runs){
     importance=T)
 }
 
-# original Out Of Bag error (based on confusion matrix)
+####### MDA #########
+# original Mean Decrease in Accuracy for each feature
+original.mdas = list(length=nFeatures)
+for (k in 1:nFeatures){
+  feature.mdas = numeric(length=opt$runs)
+  for (i in 1:opt$runs){
+    # fit a Random Forest on the original dataframe
+    fit = randomForest(formula = class ~ .,data = df,ntree=opt$ntrees,mtry=number_of_variables_to_use,importance=T)
+    # extract Mean Decrease in Accuracy for feature k
+    imp = fit$importance[k,3]
+    feature.mdas[i] = imp                     
+  }
+  original.mdas[[k]]=feature.mdas
+}
+
+
+# add names of features
+# transform into a dataframe and then a matrix
+names(original.mdas) = colnames(df)[1:nFeatures+1]
+original.mdas = ldply(original.mdas,.id = "feature")
+colnames(original.mdas)=c("feature",paste("mda",seq(1:opt$runs),sep = ""))
+row.names(original.mdas)=original.mdas$feature;original.mdas$feature = NULL;original.mdas=as.matrix(original.mdas)
+
+######### original Out Of Bag error (based on confusion matrix) ##########
 original.OOBs = numeric(length=opt$runs)
 for (i in 1:opt$runs){
   original.OOBs[i] = mean(fits.original[[i]]$err.rate[,1])
 }
-
-# original Mean Decrease in Accuracy for each feature
-original.mdas = list()
-for (i in 1:opt$runs){
-  original.mdas[[i]] = as.data.frame(fits.original[[i]]$importance[,3])
-  colnames(original.mdas[[i]])=paste("mda",as.character(i),sep = "")
-}
-original.mdas = do.call(cbind,original.mdas)
-
 
 #########################################################################################
 # Permutations: comparison of OOB error and MDA values for original and permuted datasets 
@@ -141,12 +155,24 @@ for (k in 1:nFeatures){
   permuted.mdas[[k]]=feature.mdas
 }
 # add names of features
+# transform into a dataframe and then to a matrix
 names(permuted.mdas) = colnames(df)[1:nFeatures+1]
+permuted.mdas = ldply(permuted.mdas,.id = "feature")
+colnames(permuted.mdas)=c("feature",paste("mda",seq(1:opt$runs),sep = ""))
+row.names(permuted.mdas)=permuted.mdas$feature;permuted.mdas$feature = NULL;permuted.mdas=as.matrix(permuted.mdas)
+hist(permuted.mdas)
 
-# transform into a dataframe
-permuted.res = ldply(permuted.mdas,.id = "feature")
-colnames(permuted.res)=c("feature",paste("mda",seq(1:opt$runs),sep = ""))
-
-
-
+#########################################################################################
+# Computing feature p-values
+#########################################################################################
+pvals = numeric(length=nFeatures)
+for (i in 1:nFeatures){
+  pvals[i] = ks.test(original.mdas[i,],permuted.mdas[i,])$p.value
+}
+  
+  
+  
+  
+  
+}
 
