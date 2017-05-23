@@ -5,6 +5,7 @@ Will also generate bedgraph and bigwig files from the merged BAM file.
 import os
 import glob
 import subprocess 
+import pandas as pd
 
 # config
 configfile: "config.yaml"
@@ -64,10 +65,15 @@ rule bam2bedgraph:
     message:"converting {wildcards.accession} bam to bedgraph"
     params:
         "{accession}.bg"
-    shell:
-        "bedtools genomecov -split -bg -ibam {input} > {params};"
-        "bedSort {params} {output};"
-        "rm {params}"
+    run:
+        df = pd.read_csv(config["norm"],sep="\t",index_col=0)
+        accession2normfactors = df.T.to_dict("list")
+        # divide the scale factor by 1 to get the scaling factor
+        scaling_factor = 1 / accession2normfactors[wildcards.accession][0]
+        print("the {wildcards.accession} bedgraph file will be scaled by: " + str(scaling_factor))
+        shell("bedtools genomecov -split -bg -scale " + str(scaling_factor) + " -ibam {input} > {params}")
+        shell("bedSort {params} {output}")
+        shell("rm {params}")
 
 
 #########################################
@@ -86,12 +92,4 @@ rule merge_bams_from_same_accession:
         "results/merged/{accession}.merged.bam"
     shell:
         "samtools merge -r {output} {input}"
-
-
-#rule merge_bams_from_same_genotype:
-#    input:
-#        merge_bam_files
-#    output:
-#        "results/{accession}.bam"
-#    message:"merging bam files for {wildcards.accession}"
-#    shell: "samtools merge -r {output} {input}"      
+    
