@@ -25,6 +25,7 @@ configfile: "config.yaml"
 # directories
 FQ_DIR = config["fastqdir"]
 WORKING_DIR = config["workdir"]
+RES_DIR = config["resultdir"] 
 
 # samples
 SAMPLES, = glob_wildcards(FQ_DIR + "{sample}.fastq.gz")
@@ -60,11 +61,8 @@ THREADS = 10 # don't be too greedy and let the others work (do not use all threa
 ##########
 ## Outputs
 ##########
-ACCESSIONS =  ["LYC4","LA4024","LA1954","LA1578","LA2133","LA0716","LYC140","LA1278","LA1718","LA1777","LA1840","LA2695","LYC38","LA1401","PI127826","LA2172","LA1364","LA2386","LA0407"]
 
-BAMS = expand("results/{sample}.bam",sample=SAMPLES)
-BIGWIGS = expand("{sample}.bw",sample=SAMPLES)
-
+BAMS = expand(RES_DIR + "{sample}.bam",sample=SAMPLES)
 
 rule all:
 	input:
@@ -83,7 +81,7 @@ rule merge_STAR_and_bowtie:
         star = WORKING_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam",
         bowtie = WORKING_DIR + "bowtie/{sample}_bowtie_aln.sorted.bam"
     output:
-        "results/{sample}.bam"
+        RES_DIR + "{sample}.bam"
     message: "Merging bam files for {wildcards.sample}"
     shell: 
          "java -jar {PICARD_DIR}/MergeSamFiles.jar "
