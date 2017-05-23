@@ -2,3 +2,7 @@ results/
 analysis/
 *.txt
 .DS_store
+*png
+*svg
+
+.Rproj.user
