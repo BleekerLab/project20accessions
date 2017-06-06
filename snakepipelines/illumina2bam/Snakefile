@@ -1,40 +1,71 @@
-
-
+"""
+Snakefile
+"""
+#############################
+# Load pipeline configuration
+#############################
 configfile: "config.yaml"
 
 WORKING_DIR = config["workdir"]
+RESULT_DIR = config["resultdir"]
+THREADS = config["threads"]
 
-FORWARD = expand(WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",sample=config["samples"].keys())
-REVERSE = expand(WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz",sample=config["samples"].keys())     
 
+# Util functions
 def get_forward_files(wildcards):
     "get forward reads"
-    return config["fastqdir"] + wildcards.sample + "/" + config["samples"][wildcards.sample]["left"]
+    return config["fastqdir"] + wildcards.sample + "/" + config["samples"][wildcards.sample]["forward"]
 
 def get_reverse_files(wildcards):
     "get reverse reads"
-    return config["fastqdir"] + wildcards.sample + "/" + config["samples"][wildcards.sample]["right"]
+    return config["fastqdir"] + wildcards.sample + "/" + config["samples"][wildcards.sample]["reverse"]
 
+
+#################
+# Desired output
+#################
+FORWARD = expand(WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",sample=config["samples"].keys())
+REVERSE = expand(WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz",sample=config["samples"].keys())     
 
 rule all:
 	input:
 		FORWARD,
 		REVERSE
    
-
+#################
+# Snakemake rules
+#################
 rule trimmomatic:
     input:
-        r1 = get_forward_files,
-        r2 = get_reverse_files,
+        forward = get_forward_files,
+        reverse = get_reverse_files,
         adapters = config["adapters"]
     output:
-        r1 = WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",
-        r2 = WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz",
-        r1_unpaired = WORKING_DIR + "trimmed/{sample}_forward_unpaired.fastq.gz",
-        r2_unpaired = WORKING_DIR + "trimmed/{sample}_reverse_unpaired.fastq.gz"
+        forward = WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",
+        reverse = WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz",
+        forwardUnpaired = WORKING_DIR + "trimmed/{sample}_forward_unpaired.fastq.gz",
+        reverseUnpaired = WORKING_DIR + "trimmed/{sample}_reverse_unpaired.fastq.gz"
     message: "trimming {wildcards.sample} reads"
-    wrapper:
-        "d9c0fe4/bio/trimmomatic/pe"
-
-
+    log:
+        RESULT_DIR + "logs/trimmomatic/{sample}.log"
+    params :
+        seedMisMatches =            str(config['trimmomatic']['seedMisMatches']),
+        palindromeClipTreshold =    str(config['trimmomatic']['palindromeClipTreshold']),
+        simpleClipThreshhold =      str(config['trimmomatic']['simpleClipThreshold']),
+        LeadMinTrimQual =           str(config['trimmomatic']['LeadMinTrimQual']),
+        TrailMinTrimQual =          str(config['trimmomatic']['TrailMinTrimQual']),
+        windowSize =                str(config['trimmomatic']['windowSize']),
+        avgMinQual =                str(config['trimmomatic']['avgMinQual']),
+        minReadLen =                str(config['trimmomatic']['minReadLength']),
+        phred = 		    str(config["trimmomatic"]["phred"])
+    shell:
+        "trimmomatic PE {params.phred} -threads {THREADS} "
+        "{input.forward} {input.reverse} "
+        "{output.forward} {output.forwardUnpaired} "
+        "{output.reverse} {output.reverseUnpaired} "
+        "ILLUMINACLIP:{input.adapters}:{params.seedMisMatches}:{params.palindromeClipTreshold}:{params.simpleClipThreshhold} "
+        "LEADING:{params.LeadMinTrimQual} "
+        "TRAILING:{params.TrailMinTrimQual} "
+        "SLIDINGWINDOW:{params.windowSize}:{params.avgMinQual} "
+        "MINLEN:{params.minReadLen} 2>{log}"
 
