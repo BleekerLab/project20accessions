@@ -4,5 +4,5 @@ analysis/
 .DS_store
 *png
 *svg
-
+*~
 .Rproj.user
