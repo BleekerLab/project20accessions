@@ -6,3 +6,6 @@ analysis/
 *svg
 *~
 .Rproj.user
+Snakefile~
+config.yaml~
+environment.yaml~

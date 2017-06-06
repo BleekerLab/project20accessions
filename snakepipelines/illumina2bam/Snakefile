@@ -26,15 +26,139 @@ def get_reverse_files(wildcards):
 #################
 FORWARD = expand(WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",sample=config["samples"].keys())
 REVERSE = expand(WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz",sample=config["samples"].keys())     
+BAMS = expand(WORKING_DIR + "mapped/{sample}_Aligned.sortedByCoord.out.bam",sample=config["samples"].keys())
 
 rule all:
 	input:
 		FORWARD,
-		REVERSE
+		REVERSE,
+		BAMS
    
 #################
 # Snakemake rules
 #################
+
+
+
+##########################
+# STAR map reads to genome
+##########################
+rule map_to_genome_using_STAR:
+    input:
+        ref = [WORKING_DIR + "star2pass/"+f for f in ["chrLength.txt","chrNameLength.txt","chrName.txt","chrStart.txt","Genome","genomeParameters.txt","SA","SAindex"]],
+        forward = WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",
+        reverse = WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz"
+    output:
+        WORKING_DIR + "mapped/{sample}_Aligned.sortedByCoord.out.bam",
+        WORKING_DIR + "mapped/{sample}_Aligned.sortedByCoord.out.bam.bai",
+        WORKING_DIR + "mapped/{sample}_Log.final.out",
+	WORKING_DIR + "mapped/{sample}_Signal.Unique.str1.out.bg",
+        WORKING_DIR + "mapped/{sample}_Signal.Unique.str2.out.bg",
+        WORKING_DIR + "mapped/{sample}_Signal.UniqueMultiple.str1.out.bg",
+        WORKING_DIR + "mapped/{sample}_Signal.UniqueMultiple.str2.out.bg"        
+    message:"mapping the {wildcards.sample} reads to genome"
+    params:
+        prefix = WORKING_DIR + "mapped/{sample}_",
+        maxmismatches = config["star"]["mismatches"],
+        unmapped = config["star"]["unmapped"]	,
+        multimappers = config["star"]["multimappers"],
+        matchNminoverLread = config["star"]["matchminoverlengthread"],
+	outSamType = config["star"]["samtype"],
+        outWigType = config["star"]["outwigtype"],
+        outWigStrand = config["star"]["outwigstrand"],
+        outWigNorm = config["star"]["outwignorm"],
+        genomedir = WORKING_DIR + "star2pass/"
+    shell:
+            "STAR --genomeDir {params.genomedir} "
+            "--readFilesIn {input.forward} {input.reverse} "
+            "--readFilesCommand zcat "
+            "--outFilterMultimapNmax {params.multimappers} "
+            "--outFilterMismatchNmax {params.maxmismatches} "
+            "--outFilterMatchNminOverLread {params.matchNminoverLread} "
+            "--alignEndsType EndToEnd "
+            "--runThreadN {THREADS} "
+            "--outReadsUnmapped {params.unmapped} "
+            "--outFileNamePrefix {params.prefix} "
+            "--outSAMtype {params.outSamType} "
+            "--outWigType {params.outWigType} "
+            "--outWigStrand {params.outWigStrand} "
+            "--outWigNorm {params.outWigNorm};"
+            "samtools index {output[0]}"
+
+#####################################################################
+## STAR 2-pass: genome indexing + splice junctions database generation 
+#####################################################################
+rule star2pass_index:
+    input:
+        sjdb = WORKING_DIR + "star1pass/SJ.concatenated.out.tab", 
+        ref= config["refs"]["genome"],
+        gtf = config["refs"]["gtf"]
+    output:
+        STAR_2PASS = [WORKING_DIR + "star2pass/"+ f for f in ["chrLength.txt","chrNameLength.txt","chrName.txt","chrStart.txt","Genome","genomeParameters.txt","SA","SAindex"]]
+    message: "STAR 2nd pass: generating genome index"	
+    params:
+        WORKING_DIR + "star2pass/"
+    shell:
+        "STAR --runMode genomeGenerate "
+        "--genomeDir {params} "
+        "--genomeFastaFiles {input.ref} "
+        "--runThreadN {THREADS} "
+        "--sjdbFileChrStartEnd {input.sjdb} "
+        "--sjdbOverhang 99 "
+        "--sjdbGTFfile {input.gtf};"
+        "touch -h {output}"
+
+rule concatenate_sjdb:
+    input:
+        expand(WORKING_DIR + "star1pass/{sample}_SJ.out.tab",sample=config["samples"].keys()),
+    output:
+        WORKING_DIR + "star1pass/SJ.concatenated.out.tab"
+    message:"concatenating splice junctions from different samples "
+    shell:"cat {input} >> {output}"
+
+rule star1pass_align:
+    input:
+        forward = WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",
+        reverse = WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz",
+        ref = WORKING_DIR + "star_index/"
+    output:
+        WORKING_DIR + "star1pass/{sample}_SJ.out.tab",
+        temp(WORKING_DIR + "star1pass/{sample}_Aligned.out.sam")
+    message:"STAR 1st pass: aligning {wildcards.sample} reads to generate splice junction files"
+    params:
+        WORKING_DIR + "star1pass/{sample}_"	
+    shell: 		
+        "STAR --runMode alignReads "
+        "--genomeDir {input.ref} "
+        "--readFilesIn {input.forward} {input.reverse} "
+        "--outFileNamePrefix {params} "
+        "--outFilterIntronMotifs RemoveNoncanonical "
+        "--runThreadN {THREADS} "
+        "--readFilesCommand zcat"
+
+# sdjbOverhang specifies the length of the genomic sequence around the annotated junction to be used in constructing the splie junctions database. 
+#Ideally this length should be equal to ReadLength-1
+rule star_genome_index:
+    input:
+        genome = config["refs"]["genome"],
+        gtf = config["refs"]["gtf"]
+    output:
+        WORKING_DIR + "star_index/"
+    message:"generation STAR genome index" 
+    params:
+        WORKING_DIR + "star_index/"
+    shell:
+        "mkdir -p {params};"
+        "STAR --runMode genomeGenerate "
+        "--genomeDir {params} "
+        "--genomeFastaFiles {input.genome} "
+        "--runThreadN {THREADS} "
+        "--sjdbOverhang 99 "
+        "--sjdbGTFfile {input.gtf}"
+
+######### 
+#trimming
+#########
 rule trimmomatic:
     input:
         forward = get_forward_files,
