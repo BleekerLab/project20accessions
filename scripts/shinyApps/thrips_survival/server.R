@@ -19,37 +19,50 @@ library(ggplot2,verbose = F,warn.conflicts = F)
 shinyServer(
   function(input, output) {
   ############# load data ###############################
-  # upload file
-
-  # dataM <- renderTable({
-  #   inFile <- input$upload
-  #   if (is.null(inFile))
-  #     return(NULL)
-  #   read.csv(inFile$datapath,header=input$header,sep=input$sep)
-  # })
-    
-    #This function is repsonsible for loading in the selected file
+    #This function is responsible for loading in the selected file
     filedata <- reactive({
-      infile <- input$upload
-      if (is.null(infile)) {
+      if(input$source==1){
+        df <- read.delim("data/example1_dose.txt",header = T,stringsAsFactors = F)
+      }
+      else if(input$source==2){
+        infile <- input$upload
+        if (is.null(infile)) {
         # User has not uploaded a file yet
         return(NULL)
-      }
+        }
       read.csv(infile$datapath,header=input$header,sep=input$sep)
+      }
     })
-    
-    #This previews the CSV data file
+
+    #This previews the data file
     output$contents <- renderTable({
       filedata()
     })
     
+    
 
-        ######### make a survival object #################
-    # fit <- with(dataM,survfit(formula = Surv(time,status) ~ dose,se.fit=T))
-    # 
-    # output$mydata <- renderDataTable({
-    #   dataM
-    # })
+    ######### make a survival object #################
+    
+    # example with dose assay
+    observe({
+      if(input$source==1){
+        fit <- with(filedata(),survfit(formula = Surv(time,status) ~ dose,se.fit=T))
+        output$plot <- renderPlot({
+          gg <- ggsurvplot(fit,conf.int=TRUE,data = filedata())
+          gg <- gg$plot + theme_bw() + facet_wrap(~strata)
+          print(gg)
+        })
+        }
+      })
+    # if(input$source==1){
+    #   fit <- with(filedata,survfit(formula = Surv(time,status) ~ dose,se.fit=T))
+    #   output$plot <- renderPlot({
+    #     gg <- ggsurvplot(fit,conf.int=TRUE,data = dataM)
+    #     gg <- gg$plot + theme_bw() + facet_wrap(~strata)
+    #     print(gg)
+    #     })
+    #   }
+
     
     ######### plots ############
     # output$plot <- renderPlot({
@@ -66,30 +79,5 @@ shinyServer(
   #source("helpers.R")
 
 })
-
-########### Load data ####################
-# dataM <- reactive({
-#   
-#   # if choice == 1 then load sample datasets
-#   if(input$dataInput==1){
-#     if(input$sampleData==1){
-#       data<-read.delim("data/example1_dose.txt",header=TRUE,stringsAsFactors = TRUE)			
-#     } else {
-#       data<-read.table("data/example2_genotype.txt",header=TRUE,stringsAsFactors = TRUE)		
-#     }
-#   
-#   # if choice == 2 then upload the user file
-#   } else if(input$dataInput==2){
-#     inFile <- input$upload
-#     # Avoid error message while file is not uploaded yet
-#     if (is.null(input$upload))  {return(NULL)}
-#     # Get the separator
-#     mySep <- switch(input$fileSepDF, '1'=",",'2'="\t") #list("Comma"=1,"Tab"=2)
-#     myNA <- input$na
-#     data<-read.table(inFile$datapath, sep=mySep, header=TRUE,stringsAsFactors = T,na.strings = myNA)
-#   }
-#   return(data)
-# })
-
 
 

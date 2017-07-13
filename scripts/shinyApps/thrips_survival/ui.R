@@ -19,18 +19,27 @@ shinyUI(fluidPage(
       # br(),
       # div("Type the name of the experimental condition you want to compare your results to"),
       # textInput("control",label = "Control condition",value="Mock")
+      h3("Load a toyset"),
+      radioButtons("source","",list("Load sample data"=1,"Upload file"=2)),
+      br(),
       
-      h3("Upload a file"),
-      fileInput("upload",label = "Choose a file to work with",accept = c("text/csv"),multiple = F),
-      hr(),
-      checkboxInput("header",label = "Header",value = TRUE),
-      radioButtons('sep', 'Separator',
-                   c(Tab="\t",
-                     Comma=',',
-                     Semicolon=';',
-                     Space=" "),
-                   "\t")
-      ),
+      conditionalPanel(
+       condition="input.source == '1'",
+       h4("Load sample data")
+       ),
+      conditionalPanel(
+        condition="input.source == '2'",
+        h4("Upload your own file"),
+        fileInput("upload","",accept = c("text/csv")),
+        checkboxInput("header",label = "Header",value = TRUE),
+        radioButtons('sep', 'Separator',
+                     c(Tab="\t",
+                       Comma=',',
+                       Semicolon=';',
+                       Space=" "),
+                     "\t")
+        )
+),
     
     mainPanel(
       tabsetPanel(
