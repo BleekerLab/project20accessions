@@ -23,7 +23,13 @@ shinyUI(fluidPage(
       h3("Upload a file"),
       fileInput("upload",label = "Choose a file to work with",accept = c("text/csv"),multiple = F),
       hr(),
-      checkboxInput("header",label = "Header",value = TRUE)
+      checkboxInput("header",label = "Header",value = TRUE),
+      radioButtons('sep', 'Separator',
+                   c(Tab="\t",
+                     Comma=',',
+                     Semicolon=';',
+                     Space=" "),
+                   "\t")
       ),
     
     mainPanel(

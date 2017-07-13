@@ -18,29 +18,33 @@ library(ggplot2,verbose = F,warn.conflicts = F)
 # Define server logic required to draw a histogram
 shinyServer(
   function(input, output) {
-    ########## load data ###############################
-    # *** Read in data matrix ***
-    # dataM <- reactive({
-    #   if(input$dataSource==1){
-    #       mydata<-read.delim("data/example1_dose.txt", sep=",", header=TRUE, fill=TRUE)			
-    #   } else {
-    #       mydata<-read.delim("data/example2_genotypes.txt", sep=",", header=TRUE)		
-    #   }
-    # })
+  ############# load data ###############################
+  # upload file
 
-    # upload file
-    output$contents <- renderTable({
-      inFile <- input$upload
-      
-      if (is.null(inFile))
-        return(NULL)
-      read.csv("data/example1_dose.txt",header=input$header,sep="\t")
-    })
-    # # remove NAs
-    # #dataM <- read.delim("data/example1_dose.txt",header=TRUE,stringsAsFactors = TRUE)
-    # dataM = na.omit(dataM)
+  # dataM <- renderTable({
+  #   inFile <- input$upload
+  #   if (is.null(inFile))
+  #     return(NULL)
+  #   read.csv(inFile$datapath,header=input$header,sep=input$sep)
+  # })
     
-    ######### make a survival object #################
+    #This function is repsonsible for loading in the selected file
+    filedata <- reactive({
+      infile <- input$upload
+      if (is.null(infile)) {
+        # User has not uploaded a file yet
+        return(NULL)
+      }
+      read.csv(infile$datapath,header=input$header,sep=input$sep)
+    })
+    
+    #This previews the CSV data file
+    output$contents <- renderTable({
+      filedata()
+    })
+    
+
+        ######### make a survival object #################
     # fit <- with(dataM,survfit(formula = Surv(time,status) ~ dose,se.fit=T))
     # 
     # output$mydata <- renderDataTable({
