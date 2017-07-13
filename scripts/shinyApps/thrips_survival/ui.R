@@ -14,15 +14,21 @@ shinyUI(fluidPage(
   
   sidebarLayout(
     sidebarPanel(
-      h3("Choose a data source"),
-      radioButtons("dataInput",label = "Data source",choices = c("Example1 - dose" = 1,"Example2 - genotype"=2))
+      # h3("Choose a data source"),
+      # radioButtons("dataSource",label = "Data source",choices = c("Dose"=1,"Genotype"=2)),
+      # br(),
+      # div("Type the name of the experimental condition you want to compare your results to"),
+      # textInput("control",label = "Control condition",value="Mock")
       
-      
+      h3("Upload a file"),
+      fileInput("upload",label = "Choose a file to work with",accept = c("text/csv"),multiple = F),
+      hr(),
+      checkboxInput("header",label = "Header",value = TRUE)
       ),
     
     mainPanel(
       tabsetPanel(
-        tabPanel("Data input",dataTableOutput("mydata")),
+        tabPanel("Data input",tableOutput("contents")),
         tabPanel("Plot",plotOutput("plot"))
       )
     )

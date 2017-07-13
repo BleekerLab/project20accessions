@@ -19,30 +19,49 @@ library(ggplot2,verbose = F,warn.conflicts = F)
 shinyServer(
   function(input, output) {
     ########## load data ###############################
-    dataM <- read.delim("data/example1_dose.txt",header=TRUE,stringsAsFactors = TRUE)
-    dataM = na.omit(dataM)
+    # *** Read in data matrix ***
+    # dataM <- reactive({
+    #   if(input$dataSource==1){
+    #       mydata<-read.delim("data/example1_dose.txt", sep=",", header=TRUE, fill=TRUE)			
+    #   } else {
+    #       mydata<-read.delim("data/example2_genotypes.txt", sep=",", header=TRUE)		
+    #   }
+    # })
+
+    # upload file
+    output$contents <- renderTable({
+      inFile <- input$upload
+      
+      if (is.null(inFile))
+        return(NULL)
+      read.csv("data/example1_dose.txt",header=input$header,sep="\t")
+    })
+    # # remove NAs
+    # #dataM <- read.delim("data/example1_dose.txt",header=TRUE,stringsAsFactors = TRUE)
+    # dataM = na.omit(dataM)
     
     ######### make a survival object #################
-    fit <- with(dataM,survfit(formula = Surv(time,status) ~ dose,se.fit=T))
-    
-    output$mydata <- renderDataTable({
-      dataM
-    })
+    # fit <- with(dataM,survfit(formula = Surv(time,status) ~ dose,se.fit=T))
+    # 
+    # output$mydata <- renderDataTable({
+    #   dataM
+    # })
     
     ######### plots ############
-    output$plot <- renderPlot({
-      gg <- ggsurvplot(fit,conf.int=TRUE,data = dataM)
-      gg <- gg$plot + theme_bw() + facet_wrap(~strata)
-      print(gg)
-    })
+    # output$plot <- renderPlot({
+    #   gg <- ggsurvplot(fit,conf.int=TRUE,data = dataM)
+    #   gg <- gg$plot + theme_bw() + facet_wrap(~strata)
+    #   print(gg)
+    # })
     
   
   #colnames(data) = c("factor","time","status")
   
   ######## Kaplan-Meier survival curves ###########
   # import helper function
-  source("helpers.R")
+  #source("helpers.R")
 
+})
 
 ########### Load data ####################
 # dataM <- reactive({
@@ -68,5 +87,5 @@ shinyServer(
 #   return(data)
 # })
 
-})
+
 
