@@ -26,20 +26,35 @@ def get_reverse_files(wildcards):
 #################
 FORWARD = expand(WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",sample=config["samples"].keys())
 REVERSE = expand(WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz",sample=config["samples"].keys())     
-BAMS = expand(WORKING_DIR + "mapped/{sample}_Aligned.sortedByCoord.out.bam",sample=config["samples"].keys())
+BAMS = expand(RESULT_DIR + "{sample}_Aligned.sortedByCoord.out.bam",sample=config["samples"].keys())
+BIGWIGS = expand(RESULT_DIR + "{sample}_Signal.{u}.{s}.bw",sample=config["samples"].keys(),u=["Unique","UniqueMultiple"],s=["str1","str2"])
 
 rule all:
 	input:
 		FORWARD,
 		REVERSE,
-		BAMS
+		BAMS,
+		BIGWIGS
+	message:"all done!"
    
 #################
 # Snakemake rules
 #################
 
 
-
+###################
+# Convert to bigwig
+###################
+rule bedgraph2bigwig:
+    input:
+        bg = RESULT_DIR + "{sample}_Signal.{u}.{s}.out.wig",
+        chrom = config["refs"]["chromsizes"]
+    output:
+        RESULT_DIR + "{sample}_Signal.{u}.{s}.bw",
+    message:"converting {input.bg} file to bigwig"
+    shell:
+        "wigToBigWig {input.bg} {input.chrom} {output}"
+             
 ##########################
 # STAR map reads to genome
 ##########################
@@ -49,16 +64,16 @@ rule map_to_genome_using_STAR:
         forward = WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",
         reverse = WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz"
     output:
-        WORKING_DIR + "mapped/{sample}_Aligned.sortedByCoord.out.bam",
-        WORKING_DIR + "mapped/{sample}_Aligned.sortedByCoord.out.bam.bai",
-        WORKING_DIR + "mapped/{sample}_Log.final.out",
-	WORKING_DIR + "mapped/{sample}_Signal.Unique.str1.out.bg",
-        WORKING_DIR + "mapped/{sample}_Signal.Unique.str2.out.bg",
-        WORKING_DIR + "mapped/{sample}_Signal.UniqueMultiple.str1.out.bg",
-        WORKING_DIR + "mapped/{sample}_Signal.UniqueMultiple.str2.out.bg"        
+        RESULT_DIR + "{sample}_Aligned.sortedByCoord.out.bam",
+        RESULT_DIR + "{sample}_Aligned.sortedByCoord.out.bam.bai",
+        RESULT_DIR + "{sample}_Log.final.out",
+	RESULT_DIR + "{sample}_Signal.Unique.str1.out.wig",
+        RESULT_DIR + "{sample}_Signal.Unique.str2.out.wig",
+        RESULT_DIR + "{sample}_Signal.UniqueMultiple.str1.out.wig",
+        RESULT_DIR + "{sample}_Signal.UniqueMultiple.str2.out.wig"        
     message:"mapping the {wildcards.sample} reads to genome"
     params:
-        prefix = WORKING_DIR + "mapped/{sample}_",
+        prefix = RESULT_DIR + "{sample}_",
         maxmismatches = config["star"]["mismatches"],
         unmapped = config["star"]["unmapped"]	,
         multimappers = config["star"]["multimappers"],
@@ -67,6 +82,10 @@ rule map_to_genome_using_STAR:
         outWigType = config["star"]["outwigtype"],
         outWigStrand = config["star"]["outwigstrand"],
         outWigNorm = config["star"]["outwignorm"],
+        intronmax = config["star"]["intronmax"],
+        matesgap =  config["star"]["matesgap"],
+        genomeLoad = config["star"]["genomeload"],
+        genomeram = config["star"]["genomeram"],
         genomedir = WORKING_DIR + "star2pass/"
     shell:
             "STAR --genomeDir {params.genomedir} "
@@ -74,6 +93,8 @@ rule map_to_genome_using_STAR:
             "--readFilesCommand zcat "
             "--outFilterMultimapNmax {params.multimappers} "
             "--outFilterMismatchNmax {params.maxmismatches} "
+            "--alignMatesGapMax {params.matesgap} "
+            "--alignIntronMax {params.intronmax} "
             "--outFilterMatchNminOverLread {params.matchNminoverLread} "
             "--alignEndsType EndToEnd "
             "--runThreadN {THREADS} "
@@ -82,7 +103,9 @@ rule map_to_genome_using_STAR:
             "--outSAMtype {params.outSamType} "
             "--outWigType {params.outWigType} "
             "--outWigStrand {params.outWigStrand} "
-            "--outWigNorm {params.outWigNorm};"
+            "--outWigNorm {params.outWigNorm} "
+            "--genomeLoad {params.genomeLoad} "
+            "--limitGenomeGenerateRAM {params.genomeram};"
             "samtools index {output[0]}"
 
 #####################################################################
