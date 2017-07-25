@@ -37,8 +37,8 @@ opt = parse_args(opt_parser)
 
 
 ## for now, I manually change the values in the opt list. They should come from the command line arguments in the future.
-opt$phenotype = "~/SURFdrive/trichome_team/11.analysis/metabolite_feature_selection/20170208_RF_with_sacha/01.whitefly_terpenoids/whiteflies.txt"
-opt$features = "~/SURFdrive/trichome_team/11.analysis/metabolite_feature_selection/20170208_RF_with_sacha/01.whitefly_terpenoids/terpenoids.txt"
+opt$phenotype = "~/Desktop/test/phenotype.txt"
+opt$features = "~/Desktop/test/expression.txt"
 opt$ntrees = 500
 opt$threads = 4
 opt$runs = 4
@@ -82,7 +82,7 @@ plot(fit.test$err.rate[,1],type="l",col="red",xlab = "Number of trees",ylab = "O
 model = train(class ~ .,data=df,method="rf")
 number_of_variables_to_use = model$bestTune$mtry
 
-
+nFeatures = ncol(df) - 1
 ###################################################################
 # run Random Forest analysis with optimal parameters multiple times
 ###################################################################
@@ -103,7 +103,7 @@ for (k in 1:nFeatures){
   feature.mdas = numeric(length=opt$runs)
   for (i in 1:opt$runs){
     # fit a Random Forest on the original dataframe
-    fit = randomForest(formula = class ~ .,data = df,ntree=opt$ntrees,mtry=number_of_variables_to_use,importance=T)
+    fit = randomForest(formula = df$class ~ df[,-1],data = df,ntree=opt$ntrees,mtry=number_of_variables_to_use,importance=T)
     # extract Mean Decrease in Accuracy for feature k
     imp = fit$importance[k,3]
     feature.mdas[i] = imp                     
@@ -172,7 +172,5 @@ for (i in 1:nFeatures){
   
   
   
-  
-  
-}
+
 
