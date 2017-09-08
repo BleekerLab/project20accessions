@@ -40,7 +40,6 @@ shinyUI(fluidPage(
                        Space=" "),
                      "\t"),
         textInput("control",label = "Type the name of your control condition",value="water")
-#        selectInput("control",label="Select your control condition",multiple = F,choices = c("Control"="control","Mock"="mock"))
         )
 ),
     
@@ -55,7 +54,9 @@ shinyUI(fluidPage(
                  )
           ),
         tabPanel("Data input",dataTableOutput("contents")),
-        tabPanel("Plot",plotOutput("plot")),
+        tabPanel(
+          "Plot",
+          plotOutput("plot"),downloadButton("downloadPlots",label = "Download plots as a PDF")),
         tabPanel(
           "Stats",
           p("Statistics should go here"),
@@ -67,6 +68,5 @@ shinyUI(fluidPage(
     )
   )
 ))
-
 
 
