@@ -10,5 +10,6 @@ dependencies:
   - pyyaml=3.11
   - star=2.5.3a
   - trimmomatic=0.36
+  - ucsc-wigtobigwig = 332
 
 
