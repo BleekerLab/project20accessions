@@ -10,7 +10,7 @@ shinyUI(fluidPage(
   # Sidebar with a slider input for the number of bins
   sidebarLayout(
     sidebarPanel(
-      h3("What do you prefer? One gene or multiple genes?"),
+      h4("What do you prefer? One gene or multiple genes?"),
       radioButtons("source","",list("One gene"=1,"Multiple genes"=2),selected = 1),
       br(),
       
@@ -19,10 +19,10 @@ shinyUI(fluidPage(
         textInput("gene",label= h4("Enter your favorite gene here"),value = "Solyc01g008670")),
       
       conditionalPanel(
-        condition="input.source=='2'",
-        h3("Paste a list of Solyc numbers (Solyc01g008650) separated by commas"),
+        condition="input.source == '2'",
+        h4("Paste a list of Solyc numbers (Solyc01g008650) separated by commas"),
         textInput("mygenes",label = "My genes of interest",value = "Solyc01g008650,Solyc01g008670",width='400px'),
-        actionButton('clearText_button','Clear data')
+        radioButtons("scale","Choice for y-axis scale",list("Scale free"=1,"Same scale"=2),selected = 1)
     )),
     
     # Show plots and data
