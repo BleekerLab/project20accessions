@@ -1,0 +1,113 @@
+"""
+This Snakemake pipeline will take Proton Ion RNA-Seq reads, map them to a reference sequence (e.g. Heinz tomato genome) and output an indexed sorted BAM file per sample
+"""
+import os
+from Bio import SeqIO
+import gzip
+import pandas as pd
+import subprocess  
+from glob import glob
+
+################
+## Configuration
+################
+
+# wildcards constraints
+wildcard_constraints:
+    accession = "LA|LYC|C[0-9]+"
+
+wildcard_constraints:
+    rep = "[0-9]"
+
+#config
+configfile: "config.yaml"
+
+# directories
+FQ_DIR = config["fastqdir"]
+WORKING_DIR = config["workdir"]
+RESULT_DIR = config["resultdir"] 
+
+# samples
+SAMPLES = config["samples"]
+
+# read length parameters
+MIN_LEN = 25
+MAX_LEN = 100
+
+# additional parameters
+THREADS = 10 # don't be too greedy and let the others work (do not use all threads)
+
+##########
+## Outputs
+##########
+
+GTFs = expand(RESULT_DIR + "cufflinks/{sample}/transcripts.gtf",sample=SAMPLES)
+
+rule all:
+	input:
+		GTFs	
+	message:"all done"
+
+#################################
+## copy master files and clean up
+#################################
+rule copy_master_files:
+    input:
+        "Snakefile",
+        "config.yaml",
+        "environment.yaml"
+    output:
+        RESULT_DIR + "Snakefile",
+        RESULT_DIR + "config.yaml",
+        RESULT_DIR + "environment.yaml"
+    message:"copying master files"
+    shell:
+        "cp {input} {RESULT_DIR}"
+
+
+##############################################################
+## Map reads to genome with TopHat 
+##############################################################
+rule cufflinks:
+    input:
+        WORKING_DIR + "tophat/{sample}/accepted_hits.bam"
+    output:
+        RESULT_DIR + "cufflinks/{sample}/transcripts.gtf"
+    params:
+        dir = RESULT_DIR + "cufflinks/{wildcards.sample}/"
+    shell:
+        "cufflinks --output-dir {params.dir} "
+        "-p {THREADS} "
+        "{input} "
+
+rule tophat:
+    input:
+        reads = WORKING_DIR + "trim/{sample}.fastq",
+        ref = config["refs"]["genome"]
+    output:
+        WORKING_DIR + "tophat/{sample}/accepted_hits.bam"
+    message:"mapping {wildcards.sample} reads using TopHat"
+    params:
+        dir = WORKING_DIR + "tophat/{wildcards.sample}/",
+        lib = config["tophat"]["library_type"],
+        speed = config["tophat"]["speed"]
+    shell:
+        "tophat --output-dir {params.dir} "
+        "--num-threads {THREADS} "
+        "--library-type {params.lib} "
+        "{params.speed} "
+        "{input.ref} {input.reads}"
+
+################ 
+## Read trimming 
+################
+rule trim_reads:
+    input:
+        FQ_DIR + "{sample}.fastq.gz"
+    output:
+        WORKING_DIR + "trim/{sample}.fastq"
+    message: "Trimming reads shorter than {0} and longer than {1}".format(MIN_LEN,MAX_LEN)
+    shell:"""
+          echo trimming {wildcards.sample} reads
+	  zcat {input} | paste - - - - | awk 'length($2)  >= {MIN_LEN} && length($2) <= {MAX_LEN}' |sed 's/\\t/\\n/g' > {output}
+	  """

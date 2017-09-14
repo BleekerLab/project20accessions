@@ -1,0 +1,28 @@
+---
+workdir:  "scratch/"
+threads:   10
+fastqdir:  "/home/mgalland/data/01_sequencing_runs/20160216_mRNAs_20_accessions/"
+resultdir: "results/"
+ 
+# samples
+samples:
+  LYC4_1: LYC4_1.fastq.gz
+  LYC4_2: LYC4_2.fastq.gz
+  LYC4_3: LYC4_3.fastq.gz
+  LYC4_4: LYC4_4.fastq.gz
+
+# reference sequences and annotations
+refs:
+  genome:  "/home/mgalland/data/02_refs/Solanum_habrochaites/assembly_v3.0/scaffold_scarpa.fasta"
+
+# TopHat
+tophat:
+  read_mismatches: "2"
+  min_intron_length: "70"
+  max_intron_length: "10000"
+  library_type: "fr-unstranded" # Reads from the left-most end of the fragment (in transcript coordinates) map to the transcript strand, and the right-most end maps to the opposite strand.
+  speed: "--very-sensitive"
+
+# Cufflinks
+cufflinks:
+  min_isoform_fraction: "0.1" # filters low abundance isoforms < 10% of all spliced variants

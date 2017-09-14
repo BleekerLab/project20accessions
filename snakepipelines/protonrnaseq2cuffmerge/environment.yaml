@@ -1,0 +1,12 @@
+channels:
+  - conda-forge
+  - bioconda
+  - r
+  - defaults
+dependencies:
+  - python=2.7
+  - tophat=2.1.1
+  - cufflinks=2.2.1
+
+
+
