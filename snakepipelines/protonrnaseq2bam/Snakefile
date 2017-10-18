@@ -1,12 +1,12 @@
 """
 This Snakemake pipeline will take Proton Ion RNA-Seq reads, map them to a reference sequence (e.g. Heinz tomato genome) and output an indexed sorted BAM file per sample
 """
-import os
-from Bio import SeqIO
-import gzip
-import pandas as pd
-import subprocess  
-from glob import glob
+#import os
+#from Bio import SeqIO
+#import gzip
+#import pandas as pd
+#import subprocess  
+#from glob import glob
 
 ################
 ## Configuration
@@ -101,7 +101,7 @@ rule aln_to_genome_with_bowtie:
         "bowtie2 {BOWTIE_PARAMS} "
         "-x {BOWTIE2_INDEX} "
         "-U {input} | "
-        "samtools view -bS - | samtools sort - " + WORKING_DIR + "bowtie/{wildcards.sample}_bowtie_aln.sorted"
+        "samtools view -bS - | samtools sort -@ {THREADS} -l 1 -o " + WORKING_DIR + "bowtie/{wildcards.sample}_bowtie_aln.sorted.bam " + "-"
 
 rule rename_STAR_unmapped:
     input:
@@ -196,9 +196,12 @@ rule star1pass_align:
         WORKING_DIR + "star1pass/{sample}_"	
     shell: 
         "mkdir -p {WORKING_DIR}star1pass/ ;"		
-        "STAR --runMode alignReads --genomeDir {input.ref} "
-        "--readFilesIn {input.reads} --outFileNamePrefix {params} "
-        "--outFilterIntronMotifs RemoveNoncanonical --runThreadN {THREADS}"
+        "STAR --runMode alignReads "
+        "--genomeDir {input.ref} "
+        "--readFilesIn {input.reads} "
+        "--outFileNamePrefix {params} "
+        "--outFilterIntronMotifs RemoveNoncanonical "
+        "--runThreadN {THREADS}"
 
 ################ 
 ## Read trimming 
