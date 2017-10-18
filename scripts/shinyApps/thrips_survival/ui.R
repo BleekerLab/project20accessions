@@ -19,72 +19,54 @@ shinyUI(fluidPage(
       # br(),
       # div("Type the name of the experimental condition you want to compare your results to"),
       # textInput("control",label = "Control condition",value="Mock")
-      h3("Load a toyset"),
+      h3("Load dataset"),
       radioButtons("source","",list("Load sample data"=1,"Upload file"=2)),
       br(),
       
       conditionalPanel(
-       condition="input.source == '1'",
-       h4("Load sample data")
+        condition="input.source == '1'",
+        "This loads a sample dataset for a dose toxicity assay"
        ),
       conditionalPanel(
         condition="input.source == '2'",
-        h4("Upload your own file"),
+        "This allows you to load your own dataset",
         fileInput("upload","",accept = c("text/csv")),
+        h5("Header"),
         checkboxInput("header",label = "Header",value = TRUE),
         radioButtons('sep', 'Separator',
                      c(Tab="\t",
                        Comma=',',
                        Semicolon=';',
                        Space=" "),
-                     "\t")
+                     "\t"),
+        textInput("control",label = "Type the name of your control condition",value="water")
         )
 ),
     
     mainPanel(
       tabsetPanel(
-        tabPanel("Data input",tableOutput("contents")),
-        tabPanel("Plot",plotOutput("plot"))
+        tabPanel("About",
+                 h3("Welcome to the Shiny app for thrips survival biossays"),
+                 tags$ul(
+                   tags$li("You can visualise your input data by selecting the",strong("Data input"),"tab"),
+                   tags$li("Plots will be generated in the",strong("Plot"),"tab"),
+                   tags$li("Statistical tests are available in the",strong("Stats"),"tab")
+                 )
+          ),
+        tabPanel("Data input",dataTableOutput("contents")),
+        tabPanel(
+          "Plot",
+          plotOutput("plot"),downloadButton("downloadPlots",label = "Download plots as a PDF")),
+        tabPanel(
+          "Stats",
+          p("Statistics should go here"),
+          textOutput("levels"),
+          br(),
+          textOutput("newlevs")
+          )
       )
     )
   )
 ))
 
 
-
-# # Define UI for application that draws a histogram
-# shinyUI(fluidPage(
-#   
-#   # Application title
-#   titlePanel("Survival data analysis"),
-#   
-#   # Sidebar with a slider input for number of bins 
-#   sidebarLayout(
-#     sidebarPanel(
-#       h3("Enter survival dataset"),
-#       br(),
-#       radioButtons("data",label="Choose a data source",choices=c("Load example dataset" = 1,"Upload delimited text file" = 2)),
-#       
-#       conditionalPanel(condition="input.data=='1'",
-#                        h5("Load example dataset:"),
-#                        radioButtons("sampleData",label= NULL, choices=c("Example 1: toxicity assay (dose effect)"=1,"Example 2: genotype assay"=2))
-#       ),
-#       br(),
-#       conditionalPanel(condition="input.data=='2'",
-#                        h5("Upload delimited text file: "),
-#                        fileInput("upload", "", multiple = FALSE),
-#                        radioButtons("fileSepDF",label = "Delimiter:", list("Comma"=1,"Tab"=2)),
-#                        textInput(inputId = "na",label = h5("indicate here your code for missing values. NA by default"),value="NA"),
-#                        p("Delimited text files can be separated by comma or tab"),
-#                        br(),
-#                        p("For example, Excel data can be exported in .csv (comma separated) or .tab (tab separated) format.")
-#                        )),
-#     # Show a plot of the generated distribution
-#     mainPanel(
-#       h3("Help text"),
-#       helpText("Note: help text isn't a true widget but it provides an easy way to add text to accompany other widgets"),
-#       #dataTableOutput("filetable")
-#       dataTableOutput("mydata")
-#     )
-#     )
-# ))
