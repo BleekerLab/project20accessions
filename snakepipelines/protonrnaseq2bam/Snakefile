@@ -208,8 +208,7 @@ rule trim_reads:
         FQ_DIR + "{sample}.fastq.gz"
     output:
         WORKING_DIR + "trim/{sample}.fastq"
-    message: "Trimming reads shorter than {0} and longer than {1}".format(MIN_LEN,MAX_LEN)
+    message: "Trimming {wildcards.sample} reads shorter than {MIN_LEN} and longer than {MAX_LEN}"
     shell:"""
-          echo trimming {wildcards.sample} reads
 	  zcat {input} | paste - - - - | awk 'length($2)  >= {MIN_LEN} && length($2) <= {MAX_LEN}' |sed 's/\\t/\\n/g' > {output}
 	  """
