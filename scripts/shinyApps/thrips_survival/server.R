@@ -74,6 +74,9 @@ shinyServer(
           #levels(df$dose)=reordered.levs
           # creates a survival object
           fit <- with(df,survfit(formula = Surv(time,status) ~ dose,se.fit=T))
+          # rename strata for ploting (removes prefix)
+          newNames = sub("dose=","",names(fit$strata))
+          names(fit$strata) = newNames
           # plot it
           output$plot <- renderPlot({
             gg <- ggsurvplot(fit,conf.int=TRUE,data = df)
