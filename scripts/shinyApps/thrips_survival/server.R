@@ -67,11 +67,11 @@ shinyServer(
           levs = levels(df$dose)
           output$levels <- renderPrint({levs})
           # re-order the levels so that the selected control condition is at the beggining 
-          control.cond <- renderText(input$control)
-          reordered.levs = c(input$control,setdiff(levs,input$control))
-          output$newlevs = renderPrint({reordered.levs})
-          df = droplevels(df)
-          levels(df$dose)=reordered.levs
+          #control.cond <- renderText(input$control)
+          #reordered.levs = c(input$control,setdiff(levs,input$control))
+          #output$newlevs = renderPrint({reordered.levs})
+          #df = droplevels(df)
+          #levels(df$dose)=reordered.levs
           # creates a survival object
           fit <- with(df,survfit(formula = Surv(time,status) ~ dose,se.fit=T))
           # plot it

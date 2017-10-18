@@ -39,7 +39,7 @@ shinyUI(fluidPage(
                        Semicolon=';',
                        Space=" "),
                      "\t"),
-        textInput("control",label = "Type the name of your control condition",value="water")
+        textInput("control",label = "Type the name of your control condition",value="")
         )
 ),
     
