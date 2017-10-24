@@ -1,0 +1,137 @@
+"""
+Snakefile
+"""
+#############################
+# Load pipeline configuration
+#############################
+configfile: "config.yaml"
+
+WORKING_DIR = config["workdir"]
+RESULT_DIR = config["resultdir"]
+THREADS = config["threads"]
+
+FASTQ_DIR = config["fastqdir"]
+
+GENOME = config["refs"]["genome"]
+
+SAMPLES = config["samples"]
+#SAMPLES,FILES = glob_wildcards(FASTQ_DIR + "{sample}/illumina/pairedend_500/{file}.fq.gz")
+
+# Util functions
+#def get_forward_files(wildcards):
+#    "get forward reads"
+#    return config["fastqdir"] + config["samples"][wildcards.sample] + "/" + forward "forwaàrd"]#
+
+#def get_reverse_files(wildcards):
+ #   "get reverse reads"
+  #  return config["fastqdir"] + wildcards.sample + "/" + config["samples"][wildcards.sample]["reverse"]
+
+
+#################
+# Desired output
+#################
+FORWARD = expand(WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",sample=SAMPLES)
+REVERSE = expand(WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz",sample=SAMPLES)     
+BAMS = expand(WORKING_DIR + "{sample}.bam",sample=config["samples"].keys())
+
+rule all:
+	input:
+		FORWARD,
+		REVERSE,
+		BAMS
+	message:"all done!"
+   
+#################
+# Snakemake rules
+#################
+rule copy_master_files:
+    input:
+        "Snakefile",
+        "config.yaml",
+        "environment.yaml"
+    output:
+        RESULT_DIR + "Snakefile",
+        RESULT_DIR + "config.yaml",
+        RESULT_DIR + "environment.yaml"
+    message:"copying master file"
+    shell:
+        "cp {input} {RESULT_DIR}"
+
+###################
+# Convert to bigwig
+###################
+             
+##########################
+# BWA map reads to genome
+##########################
+
+rule bwa_map_to_genome:
+    input:
+        forward = WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",
+        reverse = WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz",
+        index = [WORKING_DIR + "bwa_index/" + GENOME + f for f in [".sa",".amb",".ann",".pac",".bwt"]]
+        #WORKING_DIR + "bwa_index/" + GENOME + ".amb",
+        #WORKING_DIR + "bwa_index/" + GENOME + ".ann",
+        #WORKING_DIR + "bwa_index/" + GENOME + ".pac",
+        #WORKING_DIR + "bwa_index/" + GENOME + ".bwt"
+    output:
+        WORKING_DIR + "{sample}.bam"
+    params:
+        db_prefix = GENOME
+    message:"aligning {wildcards.sample} reads with BWA"
+    shell:
+        "bwa mem -t {THREADS} "
+        "{params.db_prefix} "
+        "{input.forward} "
+        "{input.reverse} "
+        " > {output}"
+
+rule bwa_genome_index:
+    input:
+        genome = config["refs"]["genome"]
+    output:
+        WORKING_DIR + "bwa_index/" + GENOME + ".sa",
+        WORKING_DIR + "bwa_index/" + GENOME + ".amb",
+        WORKING_DIR + "bwa_index/" + GENOME + ".ann",
+        WORKING_DIR + "bwa_index/" + GENOME + ".pac",
+        WORKING_DIR + "bwa_index/" + GENOME + ".bwt"
+    message:"indexing genome with bwa"
+    shell:
+        "bwa index {input}"    
+######### 
+#trimming
+#########
+rule trimmomatic:
+    input:
+        forward = lambda wildcards: FASTQ_DIR + config["samples"][wildcards.sample]["forward"],
+        reverse = lambda wildcards: FASTQ_DIR + config["samples"][wildcards.sample]["reverse"],
+        adapters = config["trimmomatic"]["adapters"]
+    output:
+        forward = WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",
+        reverse = WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz",
+        forwardUnpaired = WORKING_DIR + "trimmed/{sample}_forward_unpaired.fastq.gz",
+        reverseUnpaired = WORKING_DIR + "trimmed/{sample}_reverse_unpaired.fastq.gz"
+    message: "trimming {wildcards.sample} reads"
+    log:
+        RESULT_DIR + "logs/trimmomatic/{sample}.log"
+    params :
+        seedMisMatches =            str(config['trimmomatic']['seedMisMatches']),
+        palindromeClipTreshold =    str(config['trimmomatic']['palindromeClipTreshold']),
+        simpleClipThreshhold =      str(config['trimmomatic']['simpleClipThreshold']),
+        LeadMinTrimQual =           str(config['trimmomatic']['LeadMinTrimQual']),
+        TrailMinTrimQual =          str(config['trimmomatic']['TrailMinTrimQual']),
+        windowSize =                str(config['trimmomatic']['windowSize']),
+        avgMinQual =                str(config['trimmomatic']['avgMinQual']),
+        minReadLen =                str(config['trimmomatic']['minReadLength']),
+        phred = 		    str(config["trimmomatic"]["phred"])
+    shell:
+        "trimmomatic PE {params.phred} -threads {THREADS} "
+        "{input.forward} {input.reverse} "
+        "{output.forward} {output.forwardUnpaired} "
+        "{output.reverse} {output.reverseUnpaired} "
+        "ILLUMINACLIP:{input.adapters}:{params.seedMisMatches}:{params.palindromeClipTreshold}:{params.simpleClipThreshhold} "
+        "LEADING:{params.LeadMinTrimQual} "
+        "TRAILING:{params.TrailMinTrimQual} "
+        "SLIDINGWINDOW:{params.windowSize}:{params.avgMinQual} "
+        "MINLEN:{params.minReadLen} 2>{log}"
+
