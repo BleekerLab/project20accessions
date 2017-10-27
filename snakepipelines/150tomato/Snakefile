@@ -6,38 +6,23 @@ Snakefile
 #############################
 configfile: "config.yaml"
 
+# params
 WORKING_DIR = config["workdir"]
 RESULT_DIR = config["resultdir"]
 THREADS = config["threads"]
-
 FASTQ_DIR = config["fastqdir"]
-
 GENOME = config["refs"]["genome"]
 
+# samples
 SAMPLES = config["samples"]
-#SAMPLES,FILES = glob_wildcards(FASTQ_DIR + "{sample}/illumina/pairedend_500/{file}.fq.gz")
-
-# Util functions
-#def get_forward_files(wildcards):
-#    "get forward reads"
-#    return config["fastqdir"] + config["samples"][wildcards.sample] + "/" + forward "forwaàrd"]#
-
-#def get_reverse_files(wildcards):
- #   "get reverse reads"
-  #  return config["fastqdir"] + wildcards.sample + "/" + config["samples"][wildcards.sample]["reverse"]
-
 
 #################
 # Desired output
 #################
-FORWARD = expand(WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",sample=SAMPLES)
-REVERSE = expand(WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz",sample=SAMPLES)     
-BAMS = expand(WORKING_DIR + "{sample}.bam",sample=config["samples"].keys())
+BAMS = expand(RESULT_DIR + "{sample}.sorted.bam",sample=config["samples"].keys())
 
 rule all:
 	input:
-		FORWARD,
-		REVERSE,
 		BAMS
 	message:"all done!"
    
@@ -64,24 +49,33 @@ rule copy_master_files:
 ##########################
 # BWA map reads to genome
 ##########################
+rule sort_bams:
+    input:
+        WORKING_DIR + "{sample}.bam"
+    output:
+        RESULT_DIR + "{sample}.sorted.bam"
+    message:"sorting {wildcards.sample} bam file"
+    params:
+        bam = RESULT_DIR + "{sample}.sorted.bam"
+    shell:
+        "samtools sort -l 9 -m 4G -@ {THREADS} -o {output} {input};"
+        "samtools index {params.bam}"
 
 rule bwa_map_to_genome:
     input:
         forward = WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",
         reverse = WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz",
-        index = [WORKING_DIR + "bwa_index/" + GENOME + f for f in [".sa",".amb",".ann",".pac",".bwt"]]
-        #WORKING_DIR + "bwa_index/" + GENOME + ".amb",
-        #WORKING_DIR + "bwa_index/" + GENOME + ".ann",
-        #WORKING_DIR + "bwa_index/" + GENOME + ".pac",
-        #WORKING_DIR + "bwa_index/" + GENOME + ".bwt"
+        index = [GENOME + f for f in [".sa",".amb",".ann",".pac",".bwt"]]
     output:
-        WORKING_DIR + "{sample}.bam"
+        temp(WORKING_DIR + "{sample}.bam")
     params:
-        db_prefix = GENOME
+        db_prefix = GENOME,
+        verbose = config["bwa"]["verbose"]
     message:"aligning {wildcards.sample} reads with BWA"
     shell:
         "bwa mem -t {THREADS} "
         "{params.db_prefix} "
+        "-v {params.verbose} "				
         "{input.forward} "
         "{input.reverse} "
         " > {output}"
@@ -90,14 +84,28 @@ rule bwa_genome_index:
     input:
         genome = config["refs"]["genome"]
     output:
-        WORKING_DIR + "bwa_index/" + GENOME + ".sa",
-        WORKING_DIR + "bwa_index/" + GENOME + ".amb",
-        WORKING_DIR + "bwa_index/" + GENOME + ".ann",
-        WORKING_DIR + "bwa_index/" + GENOME + ".pac",
-        WORKING_DIR + "bwa_index/" + GENOME + ".bwt"
+        GENOME + ".sa",
+        GENOME + ".amb",
+        GENOME + ".ann",
+        GENOME + ".pac",
+        GENOME + ".bwt"
     message:"indexing genome with bwa"
     shell:
-        "bwa index {input}"    
+        "bwa index {input}" 
+
+rule bowtie_index:
+    input:
+        genome = config["refs"]["genome"]
+    output:
+        GENOME + ".1.bt2",
+        GENOME + ".2.bt2",
+        GENOME + ".3.bt2",
+        GENOME + ".4.bt2",
+        GENOME + ".rev.1.bt2",
+        GENOME + ".rev.2.bt2"
+    message:"indexing genome with Bowtie2"
+    shell:"bowtie2-build "
+
 ######### 
 #trimming
 #########
