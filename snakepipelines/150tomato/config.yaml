@@ -1,0 +1,78 @@
+---
+workdir: scratch/
+resultdir: results/
+
+threads: 10
+
+fastqdir: /zfs/datastore0/group_root/MAD-RBAB/05_Reference-db/external/tomato/DNA/tomato150/reseq/raw/
+
+## Genomic references, annotations and aligner indexes
+refs:
+  genome:  "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/S_lycopersicum_chromosomes.3.00.fa"
+  gff:     "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/ITAG3.0_gene_models.gff"
+  gtf:     "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/ITAG3.0_gene_models.gtf"
+  chromsizes: "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/chromSizes.txt" # for bedgraph to bigwig conversion
+
+# trimmomatic
+trimmomatic:
+  adapters: "/zfs/datastore0/software/src/Trimmomatic-0.36/adapters/TruSeq2-PE.fa"
+  seedMisMatches: '2'
+  palindromeClipTreshold: '30'
+  simpleClipThreshold: '10'
+  LeadMinTrimQual: '3'
+  TrailMinTrimQual: '3'
+  windowSize: '4'
+  avgMinQual: '15'
+  minReadLength: '40'
+  phred: "-phred33" # phred: for illumina >1.8 the quality score are encoded by phred33
+
+# samples
+samples:
+  C32:
+    forward: 001/illumina/pairedend_500/120512_I238_FCC0U42ACXX_L2_SZAXPI008746-45_1.fq.gz
+    reverse: 001/illumina/pairedend_500/120512_I238_FCC0U42ACXX_L2_SZAXPI008746-45_2.fq.gz
+  LA1578:
+    forward: 047/illumina/pairedend_500/120526_I305_FCD113TACXX_L8_SZAXPI009326-113_1.fq.gz
+    reverse: 047/illumina/pairedend_500/120526_I305_FCD113TACXX_L8_SZAXPI009326-113_2.fq.gz
+  LA1278:
+    forward: 049/illumina/pairedend_500/120526_I637_FCD12W3ACXX_L1_SZAXPI009327-123_1.fq.gz
+    reverse: 049/illumina/pairedend_500/120526_I637_FCD12W3ACXX_L1_SZAXPI009327-123_2.fq.gz
+  LA2695: 
+    forward: 052/illumina/pairedend_500/120526_I637_FCD12W3ACXX_L3_SZAXPI009329-133_1.fq.gz
+    reverse: 052/illumina/pairedend_500/120526_I637_FCD12W3ACXX_L3_SZAXPI009329-133_2.fq.gz
+  LA1401:
+    forward: 055/illumina/pairedend_500/120526_I637_FCD12W3ACXX_L6_SZAXPI009332-142_1.fq.gz
+    reverse: 055/illumina/pairedend_500/120526_I637_FCD12W3ACXX_L6_SZAXPI009332-142_2.fq.gz
+  LA2133:
+    forward: 056/illumina/pairedend_500/120526_I637_FCD12W3ACXX_L7_SZAXPI009333-158_1.fq.gz
+    reverse: 056/illumina/pairedend_500/120526_I637_FCD12W3ACXX_L7_SZAXPI009333-158_2.fq.gz
+  LYC140:
+    forward: 057/illumina/pairedend_500/120526_I637_FCD12W3ACXX_L8_SZAXPI009334-166_1.fq.gz
+    reverse: 057/illumina/pairedend_500/120526_I637_FCD12W3ACXX_L8_SZAXPI009334-166_2.fq.gz
+  LA2172:
+    forward: 059/illumina/pairedend_500/120526_I637_FCC0VM4ACXX_L1_SZAXPI009335-169_1.fq.gz
+    reverse: 059/illumina/pairedend_500/120526_I637_FCC0VM4ACXX_L1_SZAXPI009335-169_2.fq.gz
+  LA1954: 
+    forward: 060/illumina/pairedend_500/120526_I637_FCC0VM4ACXX_L2_SZAXPI009336-14_1.fq.gz
+    reverse: 060/illumina/pairedend_500/120526_I637_FCC0VM4ACXX_L2_SZAXPI009336-14_2.fq.gz
+  PI134418:
+    forward: 067/illumina/pairedend_500/120526_I637_FCC0VM4ACXX_L8_SZAXPI009342-21_1.fq.gz
+    reverse: 067/illumina/pairedend_500/120526_I637_FCC0VM4ACXX_L8_SZAXPI009342-21_2.fq.gz
+  PI127827:
+    forward: 068/illumina/pairedend_500/120527_I597_FCD12RBACXX_L1_SZAXPI009343-22_1.fq.gz
+    reverse: 068/illumina/pairedend_500/120527_I597_FCD12RBACXX_L1_SZAXPI009343-22_2.fq.gz
+  LA1718:
+    forward: 069/illumina/pairedend_500/120527_I597_FCD12RBACXX_L2_SZAXPI009344-23_1.fq.gz
+    reverse: 069/illumina/pairedend_500/120527_I597_FCD12RBACXX_L2_SZAXPI009344-23_2.fq.gz
+  LA1777: 
+    forward: 070/illumina/pairedend_500/120512_I238_FCC0U42ACXX_L5_SZAXPI008749-56_1.fq.gz
+    reverse: 070/illumina/pairedend_500/120512_I238_FCC0U42ACXX_L5_SZAXPI008749-56_2.fq.gz
+  LA0407:
+    forward: 071/illumina/pairedend_500/120527_I597_FCD12RBACXX_L3_SZAXPI009345-24_1.fq.gz
+    reverse: 071/illumina/pairedend_500/120527_I597_FCD12RBACXX_L3_SZAXPI009345-24_2.fq.gz
+  LYC4:
+    forward: 072/illumina/pairedend_500/120512_I238_FCD115HACXX_L1_SZAXPI008752-75_1.fq.gz
+    reverse: 072/illumina/pairedend_500/120512_I238_FCD115HACXX_L1_SZAXPI008752-75_2.fq.gz
+  LA0716:
+    forward: 074/illumina/pairedend_500/120512_I238_FCC0U42ACXX_L1_SZAXPI008753-79_1.fq.gz
+    reverse: 074/illumina/pairedend_500/120512_I238_FCC0U42ACXX_L1_SZAXPI008753-79_2.fq.gz
