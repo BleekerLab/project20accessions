@@ -25,11 +25,11 @@ shinyUI(fluidPage(
       
       conditionalPanel(
         condition="input.source == '1'",
-        "This loads a sample dataset for a dose toxicity assay"
+        h4("This loads a sample dataset for a dose toxicity assay")
        ),
       conditionalPanel(
         condition="input.source == '2'",
-        "This allows you to load your own dataset",
+        h4("This allows you to load your own dataset"),
         fileInput("upload","",accept = c("text/csv")),
         h5("Header"),
         checkboxInput("header",label = "Header",value = TRUE),
@@ -38,8 +38,7 @@ shinyUI(fluidPage(
                        Comma=',',
                        Semicolon=';',
                        Space=" "),
-                     "\t"),
-        textInput("control",label = "Type the name of your control condition",value="")
+                     "\t")
         )
 ),
     
@@ -54,17 +53,14 @@ shinyUI(fluidPage(
                  )
           ),
         tabPanel("Data input",dataTableOutput("contents")),
-        tabPanel(
-          "Plot",
-          plotOutput("plot"),downloadButton("downloadPlots",label = "Download plots as a PDF")),
-        tabPanel(
-          "Stats",
-          p("Statistics should go here"),
-          textOutput("levels"),
-          br(),
-          textOutput("newlevs")
-          )
-      )
+        tabPanel("Plot",plotOutput("plot"),downloadButton("downloadPlots",label = "Download plots as a PDF")),
+        tabPanel("Stats",
+                 br(),
+                 h4("Each condition is compared against the first condition found in the table (e.g. water in the given example)"),
+                 br(),
+                 dataTableOutput("summary.table")
+                 )
+        )
     )
   )
 ))
