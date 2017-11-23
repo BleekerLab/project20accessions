@@ -90,22 +90,44 @@ shinyServer(
         req(filedata())
         observe({
           df <- filedata()
-          
           # to order the plots
           df$dose = factor(x = df$dose,levels = unique(df$dose))
-
           # creates a survival object
           fit <- with(df,survfit(formula = Surv(time,status) ~ dose,se.fit=T))
-          
           # fit a Cox Proportional Hazards model
-          fitCox = coxph(formula = Surv(time,status) ~ dose,data = survData)
-          output$stats <- renderDataTable({summary(fitCox)})
-         
+          fitCox = coxph(formula = Surv(time,status) ~ dose,data = df)
+          
+          # build a summary and print it
+          fm <- as.character(fitCox$call)[2]
+          # make a nice summary table
+          summary.fit <- summary(fitCox)
+          data = as.data.frame(summary.fit$coefficients)
+          # get signif codes
+          signif.codes = as.character(cut(data[,5],breaks = c( -Inf, 0.001, 0.01, 0.05, Inf),labels= c("<0.001", "<0.01", "<0.1", "n.s." )))
+          # format data values
+          data[,1] = formatC(data[, 1], digits=3, format = "f")
+          data[,2] = formatC(data[, 2], digits=3, format = "f")
+          data[,3] = formatC(data[, 3], digits=3, format = "f")
+          data[,4] = ifelse(test = data[,4] < 0.001,yes = "< 0.001",no = formatC( data[,4], digits=5, format = "f"))
+          # add signif codes to data
+          data$Signif = signif.codes
+          # remove "dose", add a "condition" column and reorder columns
+          conditions = gsub("dose","",row.names(data))
+          data$condition = conditions
+          data = data[,c("condition","coef","exp(coef)","se(coef)","z","Pr(>|z|)","Signif")]
+          
+          # send it to output
+          output$summary.table <- renderDataTable({data})
           # rename strata for ploting (removes prefix)
           newNames = sub("dose=","",names(fit$strata))
           names(fit$strata) = newNames
           
-          # plot it
+          # download stat table
+          output$statistics.table <- downloadHandler(
+            filename = function() {"statistics"},
+            content = function(file) {write.table(data, file, row.names = FALSE,quote = F,sep="\t")}
+          )
+          ################## plot it
           output$plot <- renderPlot({
             gg <- ggsurvplot(fit,conf.int=TRUE,data = df)
             gg <- gg$plot + theme_bw() + facet_wrap(~strata)

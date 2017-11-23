@@ -57,6 +57,8 @@ shinyUI(fluidPage(
         tabPanel("Stats",
                  br(),
                  h4("Each condition is compared against the first condition found in the table (e.g. water in the given example)"),
+                 downloadButton("statistics.table",label="Download statistical results"),
+                 br(),
                  br(),
                  dataTableOutput("summary.table")
                  )
