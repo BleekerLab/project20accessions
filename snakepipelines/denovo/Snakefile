@@ -1,0 +1,195 @@
+##############################################################################################################
+# Produce de novo assembly of RNA-Seq reads + differential analysis + annotation of the assembled transcripts#
+##############################################################################################################
+import os
+import io
+import Bio
+from Bio import SeqIO
+from Bio.SeqRecord import SeqRecord
+import subprocess
+
+# configuration file for fastq file directory and other specific parameters
+configfile:"config.json" 
+
+wildcard_constraints:
+    sample = "[A-Z0-9]+"
+
+# working directory (files will be removed from here)
+WORKING_DIR = config["working_directory"]
+
+
+# Trimmomatic (read trimming)
+TRIMMOMATIC = config["trimmomatic"]["jarfile"]
+ADAPTERS_ILLUMINA = config["trimmomatic"]["adapters"]["Illumina"]
+
+# seqtk
+SEQTK_QUAL = config["seqtk"]["mask_quality_lower_than"],
+SEQTK_LEN  = config["seqtk"]["length_shorter_than"]
+
+# Trinity & related tools parameters 
+TRINITY_MEM = config["trinity"]["maxmemory"]
+TRINITY_ASSEMBLY_PARAMS = config["trinity"]["assembly_params"]
+TRINITY_ESTIMATE_ABUNDANCE = config["trinity"]["estimate_abundance"]
+TRINITY_ABUNDANCE_PARAMS = config["trinity"]["abundance_params"]
+TRINITY_UTILS = config["trinity"]["utils"]
+TRANSDECODER = config["transdecoder"]["dir"]
+TRANSDECODER_MIN_PROT_LENGTH = config["transdecoder"]["min_prot_length"]
+TRANSDECODER_MIN_ORF_NUCLEOTIDE_LENGTH = config["transdecoder"]["min_orf_nucleotide_length"]
+TRANSDECODER_PREDICT = config["transdecoder"]["predict"]
+
+# BLAST
+BLASTP_PARAMS = list(config["blastp"]["params"].values())
+
+# THREADS
+THREADS = config["threads"]
+
+###########
+##  Outputs 
+###########
+TRINITY_ASSEMBLIES = expand("results/trinity/{sample}.fasta",sample=config["samples"].keys())
+TRINITY_ASSEMBLIES_TRANSDECODER = expand("{sample}.trinity.fasta.transdecoder_dir/longest_orfs.pep",sample=config["samples"].keys())
+MASTER_FILES = ["results/config.json","results/Snakefile"]
+
+rule all:
+	input:
+		TRINITY_ASSEMBLIES,
+		MASTER_FILES
+	message:"all done"
+
+#####################
+## Copy master files
+####################
+rule copy_master_files:
+    input:
+        "Snakefile",
+        "config.json"
+    output: 
+        "results/Snakefile",
+        "results/config.json"
+    shell:
+        "cp {input} results/"
+
+#####################################    
+# de novo assembly of the reads
+######################################
+
+# add sample name and shorten header
+rule shorten_seq_names:
+    input:
+        "{sample}_trinity_out.Trinity.fasta.transdecoder_dir/longest_orfs.cds",
+    output:
+        "results/trinity/{sample}.fasta"
+    message:"shorten sequence names in {wildcards.sample} Trinity assembly fasta file"
+    run:
+        with open(input[0],"r") as filin, open(output[0],"w") as fileout:
+            records = []
+            for record in SeqIO.parse(filin,"fasta"):
+                short_name = wildcards.sample + ":" + record.id.split(" ")[0]
+                records.append(SeqRecord(record.seq,id=short_name,description=""))
+            SeqIO.write(records,fileout,"fasta") 
+        shell("rm -r {wildcards.sample}_trinity_out.Trinity.fasta.transdecoder_dir/") 
+
+# predict long ORFs
+rule trinity_transdecoder:
+    input:
+        WORKING_DIR + "trinity/{sample}.trinity.fasta"
+    output:
+        "{sample}_trinity_out.Trinity.fasta.transdecoder_dir/longest_orfs.pep",
+        "{sample}_trinity_out.Trinity.fasta.transdecoder_dir/longest_orfs.cds"
+    message:"predicting ORF within transcripts of {wildcards.sample} if ORF is >" + TRANSDECODER_MIN_PROT_LENGTH + "amino acids"
+    shell: "TransDecoder.LongOrfs -t {input} -m {TRANSDECODER_MIN_PROT_LENGTH}"
+
+rule denovo:
+    input:
+        left =  WORKING_DIR + "left/{sample}.left.fasta",
+        right = WORKING_DIR + "right/{sample}.right.fasta"
+    output:
+        WORKING_DIR + "trinity/{sample}.trinity.fasta"
+    message:"de novo assembly of {wildcards.sample} reads"
+    params:
+        WORKING_DIR + "trinity/{sample}_trinity_out.Trinity.fasta"
+    log:"trinity/assembly.log.txt"
+    shell:
+        "Trinity --seqType fa "
+        "--left {input.left} "
+        "--right {input.right} "
+        "{TRINITY_ASSEMBLY_PARAMS} "
+        "--CPU {THREADS} "
+        "--max_memory {TRINITY_MEM} "
+        "--output {params} "
+        "2>{log};"
+        "mv {params} {output}"
+
+########################################################
+# Merge left reads and convert all reads to fasta format
+########################################################
+rule convert_right_reads_to_fasta:
+    input:
+        WORKING_DIR + "trimmed/{sample}_R2.fastq"
+    output:
+        WORKING_DIR + "right/{sample}.right.fasta"
+    message:"converting {wildcards.sample} right fastq file to fasta format. Filtering on length/quality"
+    shell:
+        "seqtk seq -q {SEQTK_QUAL} -L {SEQTK_LEN} -a {input} > {output}"
+         
+rule unzip_right_reads:
+    input:
+        WORKING_DIR + "trimmed/{sample}_R2.fastq.gz"
+    output:
+        temp(WORKING_DIR + "trimmed/{sample}_R2.fastq")
+    message:"unzipping {wildcards.sample} right reads"
+    shell:"zcat {input} > {output}"
+        
+rule convert_left_reads_to_fasta:
+    input:
+        WORKING_DIR + "left/{sample}.left.fastq"
+    output: 
+        temp(WORKING_DIR + "left/{sample}.left.fasta")
+    message:"converting {wildcards.sample} left fastq file to fasta format. Filtering on length/quality"
+    shell:
+        "seqtk seq -q {SEQTK_QUAL} -L {SEQTK_LEN} -a {input} > {output}"
+
+rule merge_sample_left_reads:
+    input:
+        illumina = WORKING_DIR + "trimmed/{sample}_R1.fastq.gz",
+        ion = lambda wildcards: config["samples"][wildcards.sample]["Ion"]
+    output:
+        temp(WORKING_DIR + "left/{sample}.left.fastq")
+    message:"concatenating all left reads for {wildcards.sample}"
+    shell:
+        "zcat {input} >> {output}"
+
+###########################
+## Paired end read trimming
+###########################
+rule trimmomatic_for_Illumina_PE_reads:
+    input:
+        ADAPTERS_ILLUMINA,
+        forward = lambda wildcards: config["samples"][wildcards.sample]["Illumina"]["left"],
+        reverse = lambda wildcards: config["samples"][wildcards.sample]["Illumina"]["right"]
+    output:
+        forward  = temp(WORKING_DIR + "trimmed/{sample}_R1.fastq.gz"),
+        reverse = temp(WORKING_DIR + "trimmed/{sample}_R2.fastq.gz"),
+        forwardUnpaired  = temp(WORKING_DIR + "trimmed/{sample}_R1_unpaired.fastq.gz"),
+        reverseUnpaired = temp(WORKING_DIR + "trimmed/{sample}_R2_unpaired.fastq.gz")
+    message:"Trimming Illumina {wildcards.sample} Illumina paired-end reads using Trimmomatic"
+    params :
+        seedMisMatches =            str(config['trimmomatic']['seedMisMatches']),
+        palindromeClipTreshold =    str(config['trimmomatic']['palindromeClipTreshold']),
+        simpleClipThreshhold =      str(config['trimmomatic']['simpleClipThreshold']),
+        LeadMinTrimQual =           str(config['trimmomatic']['LeadMinTrimQual']),
+        TrailMinTrimQual =          str(config['trimmomatic']['TrailMinTrimQual']),
+        windowSize =                str(config['trimmomatic']['windowSize']),
+        avgMinQual =                str(config['trimmomatic']['avgMinQual']),
+        minReadLen =                str(config['trimmomatic']['minReadLength']),
+        phred = 		    str(config["trimmomatic"]["phred"])
+    shell:
+        "java -jar {TRIMMOMATIC} PE {params.phred} -threads {THREADS} "
+        "{input.forward} {input.reverse} "
+        "{output.forward} {output.forwardUnpaired} "
+        "{output.reverse} {output.reverseUnpaired} "
+        "ILLUMINACLIP:{ADAPTERS_ILLUMINA}:{params.seedMisMatches}:{params.palindromeClipTreshold}:{params.simpleClipThreshhold} "
+        "LEADING:{params.LeadMinTrimQual} "
+        "TRAILING:{params.TrailMinTrimQual} "
+        "SLIDINGWINDOW:{params.windowSize}:{params.avgMinQual} "
+        "MINLEN:{params.minReadLen}"          
