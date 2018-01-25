@@ -1,0 +1,31 @@
+--- 
+working_dir: /zfs/scratch/mgalland_temp/denovo/
+result_dir: results/
+
+trimmomatic: 
+  LeadMinTrimQual: "3"
+  TrailMinTrimQual: "3"
+  adapters: /zfs/datastore0/software/src/Trimmomatic-0.36/adapters/TruSeq3-PE.fa
+  avgMinQual: "15"
+  minReadLength: "40"
+  palindromeClipTreshold: "30"
+  phred: "-phred33"
+  seedMisMatches: "2"
+  simpleClipThreshold: "10"
+  windowSize: "4"
+trinity: 
+  abundance_params: "--aln_method bowtie2 --SS_lib_type RF --est_method eXpress --trinity_mode --prep_reference"
+  assembly_params: "--SS_lib_type RF --min_contig_length 200 --full_cleanup --no_bowtie"
+  estimate_abundance: /zfs/datastore0/software/src/trinityrnaseq/util/align_and_estimate_abundance.pl
+  maxmemory: 300G
+
+
+# illumina adapters
+adapters: adapters.fasta
+
+# path to sample sheet
+samples: samples.tsv
+
+# path to sequencing units. 
+# units are technical repicates (e.g. lanes)
+units: units.tsv
