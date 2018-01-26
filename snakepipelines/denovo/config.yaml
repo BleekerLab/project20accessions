@@ -14,9 +14,7 @@ trimmomatic:
   simpleClipThreshold: "10"
   windowSize: "4"
 trinity: 
-  abundance_params: "--aln_method bowtie2 --SS_lib_type RF --est_method eXpress --trinity_mode --prep_reference"
-  assembly_params: "--SS_lib_type RF --min_contig_length 200 --full_cleanup --no_bowtie"
-  estimate_abundance: /zfs/datastore0/software/src/trinityrnaseq/util/align_and_estimate_abundance.pl
+  assembly_params: "--min_contig_length 200 --full_cleanup --no_bowtie"
   maxmemory: 300G
 
 

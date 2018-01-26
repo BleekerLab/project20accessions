@@ -1,0 +1,5 @@
+sample	unit	fq1	fq2
+LA1777	2014	/home/mgalland/data/01_sequencing_runs/2014_7accessions/raw/LA1777/LA1777_GCCAAT_L008_R1_001.fastq.gz	/home/mgalland/data/01_sequencing_runs/2014_7accessions/raw/LA1777/LA1777_GCCAAT_L008_R2_001.fastq.gz
+LA1777	2017	/home/mgalland/data/01_sequencing_runs/20171123_F1_lines_LA1777_PI127826_Cv/LA1777_4_TCTCGCGC-CAGGACGT_L005_R1_001.fastq.gz	/home/mgalland/data/01_sequencing_runs/20171123_F1_lines_LA1777_PI127826_Cv/LA1777_4_TCTCGCGC-CAGGACGT_L005_R1_001.fastq.gz
+PI127826	2014	/home/mgalland/data/01_sequencing_runs/2014_7accessions/raw/PI127826/PI127826_CGATGT_L008_R1_001.fastq.gz	/home/mgalland/data/01_sequencing_runs/2014_7accessions/raw/PI127826/PI127826_CGATGT_L008_R2_001.fastq.gz
+PI127826	2017	/home/mgalland/data/01_sequencing_runs/20171123_F1_lines_LA1777_PI127826_Cv/PI26_P2_w_4_AGCGATAG-TATAGCCT_L005_R1_001.fastq.gz	/home/mgalland/data/01_sequencing_runs/20171123_F1_lines_LA1777_PI127826_Cv/PI26_P2_w_4_AGCGATAG-TATAGCCT_L005_R2_001.fastq.gz
