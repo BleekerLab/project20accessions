@@ -27,11 +27,12 @@ def generate_read_group_id(myfastqfile):
         with open(myfastqfile,"r") as f:
             first_line = f.readline()
             read_group_id = first_line.split(":")[0] + ":" + first_line.split(":")[1] + ":" + first_line.split(":")[2]
+            return read_group_id
     elif myfastqfile.endswith(".gz"):
         with gzip.open(myfastqfile,mode='rt') as f:
             first_line = f.readline()
             read_group_id = first_line.split(":")[0] + ":" + first_line.split(":")[1] + ":" + first_line.split(":")[2]
-    return read_group_id
+            return read_group_id
 
 if __name__ == '__main__':
     main()

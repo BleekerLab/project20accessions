@@ -44,11 +44,13 @@ def get_fastq(wildcards):
 # Desired output
 #################
 QC = expand(RESULT_DIR + "fastqc_before_trimming/{sample}_{unit}_{orientation}.zip",sample=SAMPLES,unit=UNITS,orientation=["forward","reverse"])
+BAMS = expand(WORKING_DIR + "mapped/{sample}_{unit}.bam",sample=SAMPLES,unit=UNITS)
 VCFs = expand(RESULT_DIR + "vcf/{sample}.vcf",sample=SAMPLES)
 
 rule all:
 	input:
 		QC,
+		BAMS,
 		VCFs
 	message:"all done!"
   
@@ -76,7 +78,8 @@ def merge_bams(wildcards):
 
 rule merge_bams:
     input:
-        merge_bams
+        #merge_bams
+        expand(WORKING_DIR + "mapped/{{sample}}_{unit}.sorted.dedup.bam",unit=UNITS)
     output:
         RESULT_DIR + "mapped/{sample}.bam"
     message:"merging all BAM files for {wildcards.sample}"
@@ -114,10 +117,10 @@ rule bwa_align:
     message:"mapping {wildcards.sample} {wildcards.unit} reads to genomic reference"
     params:
         db_prefix = WORKING_DIR + "index/genome"
-    threads: 20
+    threads: 10
     run:
-        read_group = generate_read_group_id(input[1])
-        shell("bwa mem -v 1 -t {threads} -R '@RG\\tID:{read_group}\\tPL:ILLUMINA\\tLB:{wildcards.unit}\\tSM:{wildcards.sample}' {params.db_prefix} {input.forward} {input.reverse} > {output}")
+        #read_group = generate_read_group_id(input[1])
+        shell("bwa mem -v 1 -t {threads} -R '@RG\\tID:{wildcards.sample}\\tPL:ILLUMINA\\tLB:{wildcards.unit}\\tSM:{wildcards.sample}' {params.db_prefix} {input.forward} {input.reverse} > {output}")
 
 
 rule uncompress:
@@ -159,7 +162,7 @@ rule trimmomatic:
         reverse = WORKING_DIR + "trimmed/{sample}_{unit}_reverse.fastq.gz",
         forwardUnpaired = temp(WORKING_DIR + "trimmed/{sample}_{unit}_forward_unpaired.fastq.gz"),
         reverseUnpaired = temp(WORKING_DIR + "trimmed/{sample}_{unit}_reverse_unpaired.fastq.gz")
-    message: "trimming {wildcards.sample} reads"
+    message: "trimming {wildcards.sample} reads from {wildcards.unit} library"
     log:
         RESULT_DIR + "logs/trimmomatic/{sample}.log"
     params :
@@ -215,7 +218,7 @@ rule fastqc_before_trimming:
         ######### reverse reads ####################@
         shell("fastqc -o {params.dir} {input.reverse}")
         # get original fastq file names
-        reverse_fastq_basename = get_fastq_basename(input[0])
+        reverse_fastq_basename = get_fastq_basename(input[1])
         # produce output file names "fastqc style"
         fastqc_name = reverse_fastq_basename + "_fastqc.zip"
         shell("mv {params.dir}" + fastqc_name + " " + "{output.reverse}")
