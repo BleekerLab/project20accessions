@@ -1,0 +1,227 @@
+"""
+Snakefile to compute a VCF file per sample based on a reference genome and paired-end Illumina DNA-Seq reads.
+"""
+from glob import glob
+from helpers import get_fastq_basename
+from helpers import generate_read_group_id
+import subprocess
+import pandas as pd
+
+#############################
+# Load pipeline configuration
+#############################
+configfile: "config.yaml"
+
+WORKING_DIR = config["workdir"]
+RESULT_DIR = config["resultdir"]
+
+wildcard_constraints:
+  sample="[A-Za-z]"
+wildcard_constraints:
+  unit="L[0-9]"
+
+# get samples and units
+samples = pd.read_table(config["units"], index_col="sample")
+SAMPLES = list(set(samples.index.values))
+
+units = pd.read_table(config["units"], index_col=["sample", "unit"], dtype=str)
+units.index = units.index.set_levels([i.astype(str) for i in units.index.levels])  # enforce str in index
+UNITS = units.index.get_level_values('unit').unique().tolist()
+
+wildcard_constraints:
+    sample = "[A-Za-z0-9]+"
+
+wildcard_constraints:
+    unit = "L[0-9]+"
+
+##################
+# Helper functions
+##################
+def get_fastq(wildcards):
+    return units.loc[(wildcards.sample, wildcards.unit), ["fq1", "fq2"]].dropna()
+
+#################
+# Desired output
+#################
+QC = expand(RESULT_DIR + "fastqc_before_trimming/{sample}_{unit}_{orientation}.zip",sample=SAMPLES,unit=UNITS,orientation=["forward","reverse"])
+VCFs = expand(RESULT_DIR + "vcf/{sample}.vcf",sample=SAMPLES)
+
+rule all:
+	input:
+		QC,
+		VCFs
+	message:"all done!"
+  
+##############################
+# Call SNPs with freebayes
+##############################
+rule call_variants:
+    input:
+        ref = config["refs"]["genome"],
+        bam = RESULT_DIR + "mapped/{sample}.bam"
+    output:
+        RESULT_DIR + "vcf/{sample}.vcf"
+    message:"calling variants for {wildcards.sample}"
+    threads: 10
+    shell:
+        "freebayes -f {input.ref} {input.bam} |vcffilter -f 'QUAL > 20' > {output}"   
+
+##############################
+# Merge BAMs from same library
+##############################
+def merge_bams(wildcards):
+    "collects all bams files corresponding to the same library"
+    bam_files = glob(WORKING_DIR + "mapped/" + wildcards.sample + "_" + "L[0-9]+\.sorted.dedup.bam")
+    return bam_files
+
+rule merge_bams:
+    input:
+        merge_bams
+    output:
+        RESULT_DIR + "mapped/{sample}.bam"
+    message:"merging all BAM files for {wildcards.sample}"
+    shell:"samtools merge {input} > {output}"
+
+
+##########################################
+# Align to genome, sort and mark duplicate
+##########################################
+rule mark_duplicate:
+    input:
+        WORKING_DIR + "mapped/{sample}_{unit}.sorted.bam"
+    output:
+        WORKING_DIR + "mapped/{sample}_{unit}.sorted.dedup.bam"
+    message:"marking duplicates in {wildcards.sample} {wildcards.unit} bam file"
+    shell:"samtools rmdup {input} {output}"
+
+rule samtools_sort:
+    input:
+        WORKING_DIR + "mapped/{sample}_{unit}.bam"
+    output:
+        WORKING_DIR + "mapped/{sample}_{unit}.sorted.bam"
+    message:"sorting {wildcards.sample} {wildcards.unit} bam file"
+    threads: 5
+    shell:
+        "samtools sort -@ {threads} {input} > {output}"
+
+rule bwa_align:
+    input:
+        index = [WORKING_DIR + "index/genome." + ext for ext in ["amb","ann","pac","sa","bwt"]],
+        forward = WORKING_DIR + "trimmed/{sample}_{unit}_forward.fastq",
+        reverse = WORKING_DIR + "trimmed/{sample}_{unit}_reverse.fastq"
+    output:
+        WORKING_DIR + "mapped/{sample}_{unit}.bam"
+    message:"mapping {wildcards.sample} {wildcards.unit} reads to genomic reference"
+    params:
+        db_prefix = WORKING_DIR + "index/genome"
+    threads: 20
+    run:
+        read_group = generate_read_group_id(input[1])
+        shell("bwa mem -v 1 -t {threads} -R '@RG\\tID:{read_group}\\tPL:ILLUMINA\\tLB:{wildcards.unit}\\tSM:{wildcards.sample}' {params.db_prefix} {input.forward} {input.reverse} > {output}")
+
+
+rule uncompress:
+    input:
+        forward = WORKING_DIR + "trimmed/{sample}_{unit}_forward.fastq.gz",
+        reverse = WORKING_DIR + "trimmed/{sample}_{unit}_reverse.fastq.gz"
+    output:
+        forward = WORKING_DIR + "trimmed/{sample}_{unit}_forward.fastq",
+        reverse = WORKING_DIR + "trimmed/{sample}_{unit}_reverse.fastq"
+    message:"uncompressing {wildcards.sample} {wildcards.unit} reads"
+    shell:
+        "zcat {input.forward} > {output.forward};"
+        "zcat {input.reverse} > {output.reverse}"
+
+rule bwa_index:
+    input:
+        genome = config["refs"]["genome"]
+    output:
+        WORKING_DIR + "index/genome.amb",
+        WORKING_DIR + "index/genome.ann",
+        WORKING_DIR + "index/genome.pac",
+        WORKING_DIR + "index/genome.sa",
+        WORKING_DIR + "index/genome.bwt" 
+    message:"building BWA index for the genomic reference"
+    params:
+        db_prefix = WORKING_DIR + "index/genome"
+    shell:
+        "bwa index -p {params.db_prefix} {input}"
+
+######### 
+#trimming
+#########
+rule trimmomatic:
+    input:
+        reads = get_fastq,
+        adapters = config["adapters"]
+    output:
+        forward = WORKING_DIR + "trimmed/{sample}_{unit}_forward.fastq.gz",
+        reverse = WORKING_DIR + "trimmed/{sample}_{unit}_reverse.fastq.gz",
+        forwardUnpaired = temp(WORKING_DIR + "trimmed/{sample}_{unit}_forward_unpaired.fastq.gz"),
+        reverseUnpaired = temp(WORKING_DIR + "trimmed/{sample}_{unit}_reverse_unpaired.fastq.gz")
+    message: "trimming {wildcards.sample} reads"
+    log:
+        RESULT_DIR + "logs/trimmomatic/{sample}.log"
+    params :
+        seedMisMatches =            str(config['trimmomatic']['seedMisMatches']),
+        palindromeClipTreshold =    str(config['trimmomatic']['palindromeClipTreshold']),
+        simpleClipThreshhold =      str(config['trimmomatic']['simpleClipThreshold']),
+        LeadMinTrimQual =           str(config['trimmomatic']['LeadMinTrimQual']),
+        TrailMinTrimQual =          str(config['trimmomatic']['TrailMinTrimQual']),
+        windowSize =                str(config['trimmomatic']['windowSize']),
+        avgMinQual =                str(config['trimmomatic']['avgMinQual']),
+        minReadLen =                str(config['trimmomatic']['minReadLength']),
+        phred = 		    str(config["trimmomatic"]["phred"])
+    threads: 10
+    shell:
+        "trimmomatic PE {params.phred} -threads {threads} "
+        "{input.reads} "
+        "{output.forward} {output.forwardUnpaired} "
+        "{output.reverse} {output.reverseUnpaired} "
+        "ILLUMINACLIP:{input.adapters}:{params.seedMisMatches}:{params.palindromeClipTreshold}:{params.simpleClipThreshhold} "
+        "LEADING:{params.LeadMinTrimQual} "
+        "TRAILING:{params.TrailMinTrimQual} "
+        "SLIDINGWINDOW:{params.windowSize}:{params.avgMinQual} "
+        "MINLEN:{params.minReadLen} 2>{log}"
+
+
+####################
+# QC before trimming
+####################
+def get_forward_fastq(wildcards):
+    return units.loc[(wildcards.sample, wildcards.unit), ["fq1"]].dropna()
+
+def get_reverse_fastq(wildcards):
+    return units.loc[(wildcards.sample, wildcards.unit), ["fq2"]].dropna()
+
+rule fastqc_before_trimming:
+    input:
+        forward = get_forward_fastq,
+        reverse = get_reverse_fastq 
+    output:
+        forward = RESULT_DIR + "fastqc_before_trimming/{sample}_{unit}_forward.zip",
+        reverse = RESULT_DIR + "fastqc_before_trimming/{sample}_{unit}_reverse.zip"          
+    message:"FastQC check of {wildcards.sample} reads from {wildcards.unit} library before trimming"
+    params:
+        dir = RESULT_DIR + "fastqc_before_trimming/"
+    run:
+        ######### forward reads ####################@
+        shell("fastqc -o {params.dir} {input.forward}")
+        # get original fastq file names
+        forward_fastq_basename = get_fastq_basename(input[0])
+        # produce output file names "fastqc style"
+        fastqc_name = forward_fastq_basename + "_fastqc.zip"
+        shell("mv {params.dir}" + fastqc_name + " " + "{output.forward}")
+        ######### reverse reads ####################@
+        shell("fastqc -o {params.dir} {input.reverse}")
+        # get original fastq file names
+        reverse_fastq_basename = get_fastq_basename(input[0])
+        # produce output file names "fastqc style"
+        fastqc_name = reverse_fastq_basename + "_fastqc.zip"
+        shell("mv {params.dir}" + fastqc_name + " " + "{output.reverse}")
+	
+
+
+
+
+

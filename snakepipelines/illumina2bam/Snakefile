@@ -14,25 +14,23 @@ THREADS = config["threads"]
 # Util functions
 def get_forward_files(wildcards):
     "get forward reads"
-    return config["fastqdir"] + wildcards.sample + "/" + config["samples"][wildcards.sample]["forward"]
+    return config["fastqdir"] + config["samples"][wildcards.sample]["forward"]
 
 def get_reverse_files(wildcards):
     "get reverse reads"
-    return config["fastqdir"] + wildcards.sample + "/" + config["samples"][wildcards.sample]["reverse"]
+    return config["fastqdir"] + config["samples"][wildcards.sample]["reverse"]
 
 
 #################
 # Desired output
 #################
-FORWARD = expand(WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",sample=config["samples"].keys())
-REVERSE = expand(WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz",sample=config["samples"].keys())     
+#FORWARD = expand(WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",sample=config["samples"].keys())
+#REVERSE = expand(WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz",sample=config["samples"].keys())     
 BAMS = expand(RESULT_DIR + "{sample}_Aligned.sortedByCoord.out.bam",sample=config["samples"].keys())
-BIGWIGS = expand(RESULT_DIR + "{sample}_Signal.{u}.{s}.bw",sample=config["samples"].keys(),u=["Unique","UniqueMultiple"],s=["str1","str2"])
+BIGWIGS = expand(RESULT_DIR + "{sample}_Signal.{u}.bw",sample=config["samples"].keys(),u=["Unique","UniqueMultiple"])
 
 rule all:
 	input:
-		FORWARD,
-		REVERSE,
 		BAMS,
 		BIGWIGS
 	message:"all done!"
@@ -41,16 +39,31 @@ rule all:
 # Snakemake rules
 #################
 
+####################
+# Saves master files
+####################
+rule copy_master_files_to_results:
+    input:
+        "Snakefile",
+        "config.yaml",
+        "environment.yaml"
+    output:
+        RESULT_DIR + "Snakefile",
+        RESULT_DIR + "config.yaml",
+        RESULT_DIR + "environment.yaml"
+    message:"copy master files to {RESULT_DIR}" 
+    shell:
+        "cp {input} {RESULT_DIR}"
 
 ###################
 # Convert to bigwig
 ###################
 rule bedgraph2bigwig:
     input:
-        bg = RESULT_DIR + "{sample}_Signal.{u}.{s}.out.wig",
+        bg = RESULT_DIR + "{sample}_Signal.{u}.str1.out.wig",
         chrom = config["refs"]["chromsizes"]
     output:
-        RESULT_DIR + "{sample}_Signal.{u}.{s}.bw",
+        RESULT_DIR + "{sample}_Signal.{u}.bw",
     message:"converting {input.bg} file to bigwig"
     shell:
         "wigToBigWig {input.bg} {input.chrom} {output}"
@@ -68,10 +81,8 @@ rule map_to_genome_using_STAR:
         RESULT_DIR + "{sample}_Aligned.sortedByCoord.out.bam.bai",
         RESULT_DIR + "{sample}_Log.final.out",
 	RESULT_DIR + "{sample}_Signal.Unique.str1.out.wig",
-        RESULT_DIR + "{sample}_Signal.Unique.str2.out.wig",
-        RESULT_DIR + "{sample}_Signal.UniqueMultiple.str1.out.wig",
-        RESULT_DIR + "{sample}_Signal.UniqueMultiple.str2.out.wig"        
-    message:"mapping the {wildcards.sample} reads to genome"
+        RESULT_DIR + "{sample}_Signal.UniqueMultiple.str1.out.wig"        
+    message:"mapping {wildcards.sample} reads to genome"
     params:
         prefix = RESULT_DIR + "{sample}_",
         maxmismatches = config["star"]["mismatches"],
@@ -82,6 +93,7 @@ rule map_to_genome_using_STAR:
         outWigType = config["star"]["outwigtype"],
         outWigStrand = config["star"]["outwigstrand"],
         outWigNorm = config["star"]["outwignorm"],
+        outSAMattributes = config["star"]["samattributes"],
         intronmax = config["star"]["intronmax"],
         matesgap =  config["star"]["matesgap"],
         genomeLoad = config["star"]["genomeload"],
@@ -104,6 +116,7 @@ rule map_to_genome_using_STAR:
             "--outWigType {params.outWigType} "
             "--outWigStrand {params.outWigStrand} "
             "--outWigNorm {params.outWigNorm} "
+            "--outSAMattributes {params.outSAMattributes} "
             "--genomeLoad {params.genomeLoad} "
             "--limitGenomeGenerateRAM {params.genomeram};"
             "samtools index {output[0]}"
@@ -179,6 +192,22 @@ rule star_genome_index:
         "--sjdbOverhang 99 "
         "--sjdbGTFfile {input.gtf}"
 
+###################
+# QC after trimming
+###################
+rule fastqc_after_trimming:
+    input:
+        forward = WORKING_DIR + "trimmed/{sample}_forward.fastq.gz",
+        reverse = WORKING_DIR + "trimmed/{sample}_reverse.fastq.gz"
+    output:
+        forward = RESULT_DIR + "fastqc_after_trimming/{sample}_forward.zip",
+        reverse = RESULT_DIR + "fastqc_after_trimming/{sample}_reverse.zip"
+    message:"FastQC check of {wildcards.sample} reads after trimming"
+    params:
+        dir = RESULT_DIR + "fastqc_after_trimming/"
+    shell:
+        "fastqc -o {params.dir} {input.forward} {input.reverse}"
+
 ######### 
 #trimming
 #########
@@ -216,3 +245,18 @@ rule trimmomatic:
         "SLIDINGWINDOW:{params.windowSize}:{params.avgMinQual} "
         "MINLEN:{params.minReadLen} 2>{log}"
 
+####
+# QC
+####
+rule fastqc_before_trimming:
+    input:
+        forward = get_forward_files,
+        reverse = get_reverse_files
+    output:
+        forward = RESULT_DIR + "fastqc_before_trimming/{sample}_forward.zip",
+        reverse = RESULT_DIR + "fastqc_before_trimming/{sample}_reverse.zip"
+    message:"FastQC check of {wildcards.sample} reads before trimming"
+    params:
+        dir = RESULT_DIR + "fastqc_before_trimming/"
+    shell:
+        "fastqc -o {params.dir} {input.forward} {input.reverse}"

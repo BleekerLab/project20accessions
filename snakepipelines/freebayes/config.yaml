@@ -1,33 +1,39 @@
 ---
-workdir:  "scratch/"
-threads:   10
-fastqdir:  "/home/mgalland/data/01_sequencing_runs/20171123_F1_lines_LA1777_PI127826_Cv/"
+workdir:  "/zfs/scratch/mgalland_temp/freebayes/"
+fastqdir: "/home/mgalland/data/01_sequencing_runs/20170718_Hartwig/"
 resultdir: "results/"
 
-samples:
-  LA1777:
-    forward:  "LA1777_4_TCTCGCGC-CAGGACGT_L005_R1_001.fastq.gz" 
-    reverse:  "LA1777_4_TCTCGCGC-CAGGACGT_L005_R2_001.fastq.gz" 
-  PI127826:
-    forward:  "PI26_P2_w_4_AGCGATAG-TATAGCCT_L005_R1_001.fastq.gz"
-    reverse:  "PI26_P2_w_4_AGCGATAG-TATAGCCT_L005_R2_001.fastq.gz" 
-  LA1777_F1:
-    forward:  "LA1777_F1_3_TCTCGCGC-TAATCTTA_L007_R1_001.fastq.gz"
-    reverse:  "LA1777_F1_3_TCTCGCGC-TAATCTTA_L007_R2_001.fastq.gz"
-  PI127826_F1:
-    forward:  "14865_PI127826_F1_AGCGATAG-AGGCGAAG_L007_R1_001.fastq.gz"
-    reverse:  "14865_PI127826_F1_AGCGATAG-AGGCGAAG_L007_R2_001.fastq.gz"
-  Cv_P1_LA1777:
-    forward:  "LA1777_P1_Cv_4_TCTCGCGC-AGGCGAAG_L007_R1_001.fastq.gz"
-    reverse:  "LA1777_P1_Cv_4_TCTCGCGC-AGGCGAAG_L007_R2_001.fastq.gz"
-  S.lyc_OT5001:
-    forward:  "PI26_P1_cv_i_AGCGATAG-CCTATCCT_L006_R1_001.fastq.gz"
-    reverse:  "PI26_P1_cv_i_AGCGATAG-CCTATCCT_L006_R2_001.fastq.gz"
-  PI127826xLA17777_F1:
-    forward:  "PI26xLA1777_F1_J_TCTCGCGC-GTACTGAC_L005_R1_001.fastq.gz"
-    reverse:  "PI26xLA1777_F1_J_TCTCGCGC-GTACTGAC_L005_R2_001.fastq.gz"
-
-adapters: "/zfs/datastore0/software/src/Trimmomatic-0.30/adapters/TruSeq3-PE.fa"
+# units to samples tsv file
+units: "units.tsv"
+#samples:
+#    test:
+#      lib_forward:
+##        L1: "test_L1_R1.fastq.gz"
+#        L2: "test_L2_R1.fastq.gz"
+#      lib_reverse:
+#        L1: "test_L1_R2.fastq.gz"
+#        L2: "test_L2_R2.fastq.gz"
+#  LA1777:
+#    lib_forward:
+#      L1: "LA1777_HJL5GALXX_S1_L001_R1_001.fastq.gz"
+#      L2: "LA1777_HJL5GALXX_S1_L002_R1_001.fastq.gz"
+#      L3: "LA1777_HJL5GALXX_S1_L003_R1_001.fastq.gz"
+#      L4: "LA1777_HJL5GALXX_S1_L004_R1_001.fastq.gz"
+#      L5: "LA1777_HJL5GALXX_S1_L005_R1_001.fastq.gz"
+#      L6: "LA1777_HJL5GALXX_S1_L006_R1_001.fastq.gz"
+#      L7: "LA1777_HJL5GALXX_S1_L007_R1_001.fastq.gz"
+#      L8: "LA1777_HJL5GALXX_S1_L008_R1_001.fastq.gz"
+#    lib_reverse:
+#      L1: "LA1777_HJL5GALXX_S1_L001_R2_001.fastq.gz"
+#      L2: "LA1777_HJL5GALXX_S1_L002_R2_001.fastq.gz"
+#      L3: "LA1777_HJL5GALXX_S1_L003_R2_001.fastq.gz"
+#      L4: "LA1777_HJL5GALXX_S1_L004_R2_001.fastq.gz"
+ #     L5: "LA1777_HJL5GALXX_S1_L005_R2_001.fastq.gz"
+ #     L6: "LA1777_HJL5GALXX_S1_L006_R2_001.fastq.gz"
+ #     L7: "LA1777_HJL5GALXX_S1_L007_R2_001.fastq.gz"
+ #     L8: "LA1777_HJL5GALXX_S1_L008_R2_001.fastq.gz"
+        
+adapters: "adapters.fasta"
  
 ## Genomic references, annotations and aligner indexes
 refs:
