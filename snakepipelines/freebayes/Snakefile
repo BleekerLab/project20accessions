@@ -95,7 +95,15 @@ rule mark_duplicate:
     output:
         WORKING_DIR + "mapped/{sample}_{unit}.sorted.dedup.bam"
     message:"marking duplicates in {wildcards.sample} {wildcards.unit} bam file"
-    shell:"samtools rmdup {input} {output}"
+    log:
+        RESULT_DIR + "logs/picard/{sample}.{unit}.metrics.txt"
+    shell:
+        "picard MarkDuplicates "
+        "I={input} "
+        "O={output} "
+        "M={log} "
+        "REMOVE_DUPLICATES=false"
+
 
 rule samtools_sort:
     input:
