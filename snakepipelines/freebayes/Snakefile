@@ -222,24 +222,16 @@ def get_forward_fastq(wildcards):
 def get_reverse_fastq(wildcards):
     return units.loc[(wildcards.sample, wildcards.unit), ["fq2"]].dropna()
 
-rule fastqc_before_trimming:
+
+rule reverse_reads_fastqc_before_trimming:
     input:
-        forward = get_forward_fastq,
         reverse = get_reverse_fastq 
     output:
-        forward = RESULT_DIR + "fastqc_before_trimming/{sample}_{unit}_forward.zip",
         reverse = RESULT_DIR + "fastqc_before_trimming/{sample}_{unit}_reverse.zip"          
     message:"FastQC check of {wildcards.sample} reads from {wildcards.unit} library before trimming"
     params:
         dir = RESULT_DIR + "fastqc_before_trimming/"
     run:
-        ######### forward reads ####################@
-        shell("fastqc -o {params.dir} {input.forward}")
-        # get original fastq file names
-        forward_fastq_basename = get_fastq_basename(input[0])
-        # produce output file names "fastqc style"
-        fastqc_name = forward_fastq_basename + "_fastqc.zip"
-        shell("mv {params.dir}" + fastqc_name + " " + "{output.forward}")
         ######### reverse reads ####################@
         shell("fastqc -o {params.dir} {input.reverse}")
         # get original fastq file names
@@ -247,6 +239,23 @@ rule fastqc_before_trimming:
         # produce output file names "fastqc style"
         fastqc_name = reverse_fastq_basename + "_fastqc.zip"
         shell("mv {params.dir}" + fastqc_name + " " + "{output.reverse}")
+
+rule forward_reads_fastqc_before_trimming:
+    input:
+        forward = get_forward_fastq,
+    output:
+        forward = RESULT_DIR + "fastqc_before_trimming/{sample}_{unit}_forward.zip",    
+    message:"FastQC check of {wildcards.sample} reads from {wildcards.unit} library before trimming"
+    params:
+        dir = RESULT_DIR + "fastqc_before_trimming/"
+    run:
+        ######### forward reads ####################
+        shell("fastqc -o {params.dir} {input.forward}")
+        # get original fastq file names
+        forward_fastq_basename = get_fastq_basename(input[0])
+        # produce output file names "fastqc style"
+        fastqc_name = forward_fastq_basename + "_fastqc.zip"
+        shell("mv {params.dir}" + fastqc_name + " " + "{output.forward}")
 	
 
 
