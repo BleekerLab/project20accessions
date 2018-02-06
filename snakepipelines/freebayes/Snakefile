@@ -52,7 +52,8 @@ rule all:
 		QC,
 		BAMS,
 		VCFs
-	message:"all done!"
+	message:"all done! Cleaning working directory"
+        shell:"rm -r {WORKING_DIR}"
   
 ##############################
 # Call SNPs with freebayes
@@ -83,7 +84,8 @@ rule merge_bams:
     output:
         RESULT_DIR + "mapped/{sample}.bam"
     message:"merging all BAM files for {wildcards.sample}"
-    shell:"samtools merge {input} > {output}"
+    shell:
+        "samtools merge {output} {input}"
 
 
 ##########################################
@@ -115,6 +117,21 @@ rule samtools_sort:
     shell:
         "samtools sort -@ {threads} {input} > {output}"
 
+# TODO: check if read_group assignment works with BWA MEM
+# TODO: if it does not work, try to replace it with Picard
+#rule add_read_groups:
+#    input:
+#       WORKING_DIR + "mapped/{sample}_{unit}.bam"
+#    output:
+#       WORKING_DIR + "mapped/{sample}_{unit}.rg.bam"
+#    message:"adding read group to {input}"
+#    shell:
+#        "picard AddOrReplaceReadGroups "
+#        "I={input} "
+#        "O={output}
+#
+ 
+
 rule bwa_align:
     input:
         index = [WORKING_DIR + "index/genome." + ext for ext in ["amb","ann","pac","sa","bwt"]],
@@ -127,7 +144,7 @@ rule bwa_align:
         db_prefix = WORKING_DIR + "index/genome"
     threads: 10
     run:
-        #read_group = generate_read_group_id(input[1])
+        read_group = generate_read_group_id("{input.forward}")
         shell("bwa mem -v 1 -t {threads} -R '@RG\\tID:{wildcards.sample}\\tPL:ILLUMINA\\tLB:{wildcards.unit}\\tSM:{wildcards.sample}' {params.db_prefix} {input.forward} {input.reverse} > {output}")
 
 
