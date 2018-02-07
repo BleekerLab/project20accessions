@@ -1,0 +1,34 @@
+"""
+This script takes a file listing NCBI or EBI SRA accessions and download the corresponding run
+
+You will need parallel-fastq-dump (https://github.com/rvalieris/parallel-fastq-dump) that you can install with bioconda (conda install -c bioconda parallel-fastq-dump)
+
+
+"""
+import pandas as pd
+import subprocess
+
+RES_DIR = "/zfs/scratch/mgalland_temp/150tomato/"
+
+# SRA accessions
+# read tabulated file containing SRR or ERR accessions to be downloaded    
+df = pd.read_csv("150tomato.txt",sep="\t",index_col=False)
+RUNS = df["run"].tolist()
+
+
+# desired output
+FASTQS = expand(RES_DIR + "{run}_{read}.fastq.gz",run=RUNS,read=["1","2"])
+
+rule all:
+	input:
+		FASTQS
+	message:"all files downloaded"
+
+rule download:
+    output:
+        RES_DIR + "{run}_{read}.fastq.gz"
+    message:"downloading SRA accession {wildcards.run}"
+    threads: 16
+    shell:
+        "parallel-fastq-dump --sra-id {wildcards.run} --threads {threads} --outdir {RES_DIR} --gzip --split-files"
+        
