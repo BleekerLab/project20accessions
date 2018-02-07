@@ -4,7 +4,7 @@ Snakefile to compute a VCF file per sample based on a reference genome and paire
 from glob import glob
 from helpers import get_fastq_basename
 from helpers import generate_read_group_id
-import subprocess
+from subprocess import check_output
 import pandas as pd
 
 #############################
@@ -144,9 +144,15 @@ rule bwa_align:
         db_prefix = WORKING_DIR + "index/genome"
     threads: 10
     run:
-        read_group = generate_read_group_id("{input.forward}")
-        shell("bwa mem -v 1 -t {threads} -R '@RG\\tID:{wildcards.sample}\\tPL:ILLUMINA\\tLB:{wildcards.unit}\\tSM:{wildcards.sample}' {params.db_prefix} {input.forward} {input.reverse} > {output}")
-
+        # Building the read group id (sequencer_id + flowcell_name + lane_number + barcode)
+        
+        SEQUENCER_ID=check_output("head -n 1 " + input.forward + " |cut -d: -f1",shell=True).decode().strip()
+        FLOWCELL_NAME=check_output("head -n 1 " + input.forward + " |cut -d: -f3",shell=True).decode().strip()
+        FLOWCELL_LANE=check_output("head -n 1 " + input.forward + " |cut -d: -f4",shell=True).decode().strip()
+        BARCODE=check_output("head -n 1 " + input.forward + " |cut -d' ' -f2 |cut -d: -f4",shell=True).decode().strip()
+        # Feeding the READ_GROUP_ID to bwa
+        READ_GROUP = SEQUENCER_ID + "." + FLOWCELL_NAME + "." + FLOWCELL_LANE + "." + BARCODE
+        shell("bwa mem -v 1 -t {threads} -R '@RG\\tID:{READ_GROUP}\\tPL:ILLUMINA\\tLB:{wildcards.unit}\\tSM:{wildcards.sample}' {params.db_prefix} {input.forward} {input.reverse} >{output}")
 
 rule uncompress:
     input:
@@ -235,7 +241,7 @@ rule reverse_reads_fastqc_before_trimming:
         ######### reverse reads ####################@
         shell("fastqc -o {params.dir} {input.reverse}")
         # get original fastq file names
-        reverse_fastq_basename = get_fastq_basename(input[1])
+        reverse_fastq_basename = get_fastq_basename(input[0])
         # produce output file names "fastqc style"
         fastqc_name = reverse_fastq_basename + "_fastqc.zip"
         shell("mv {params.dir}" + fastqc_name + " " + "{output.reverse}")
