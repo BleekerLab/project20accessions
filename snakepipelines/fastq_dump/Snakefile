@@ -10,10 +10,12 @@ import subprocess
 
 RES_DIR = "/zfs/scratch/mgalland_temp/150tomato/"
 
-# SRA accessions
+# SRA accessions and sample names
 # read tabulated file containing SRR or ERR accessions to be downloaded    
 df = pd.read_csv("150tomato.txt",sep="\t",index_col=False)
 RUNS = df["run"].tolist()
+NAMES = df["name"].tolist()
+
 
 
 # desired output
@@ -24,10 +26,12 @@ rule all:
 		FASTQS
 	message:"all files downloaded"
 
+       
 rule download:
     output:
-        RES_DIR + "{run}_{read}.fastq.gz"
-    message:"downloading SRA accession {wildcards.run}"
+        RES_DIR + "{run}_1.fastq.gz",
+        RES_DIR + "{run}_2.fastq.gz"
+    message:"downloading SRA accession {wildcards.run} into {RES_DIR}"
     threads: 16
     shell:
         "parallel-fastq-dump --sra-id {wildcards.run} --threads {threads} --outdir {RES_DIR} --gzip --split-files"

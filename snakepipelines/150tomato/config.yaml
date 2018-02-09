@@ -1,32 +1,18 @@
----
-workdir: scratch/
-resultdir: results/
-
-threads: 10
+--- 
+threads: 20
 
 fastqdir: /zfs/datastore0/group_root/MAD-RBAB/05_Reference-db/external/tomato/DNA/tomato150/reseq/raw/
 
-## Genomic references, annotations and aligner indexes
-refs:
-  genome:  "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/S_lycopersicum_chromosomes.3.00.fa"
-  gff:     "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/ITAG3.0_gene_models.gff"
-  gtf:     "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/ITAG3.0_gene_models.gtf"
-  chromsizes: "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/chromSizes.txt" # for bedgraph to bigwig conversion
+resultdir: results/
 
-# trimmomatic
-trimmomatic:
-  adapters: "/zfs/datastore0/software/src/Trimmomatic-0.36/adapters/TruSeq2-PE.fa"
-  seedMisMatches: '2'
-  palindromeClipTreshold: '30'
-  simpleClipThreshold: '10'
-  LeadMinTrimQual: '3'
-  TrailMinTrimQual: '3'
-  windowSize: '4'
-  avgMinQual: '15'
-  minReadLength: '40'
-  phred: "-phred33" # phred: for illumina >1.8 the quality score are encoded by phred33
+workdir: /zfs/scratch/mgalland_temp/150tomato/
 
-# samples
+refs: 
+  chromsizes: /home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/chromSizes.txt
+  genome: /home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/S_lycopersicum_chromosomes.3.00.fa
+  gff: /home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/ITAG3.0_gene_models.gff
+  gtf: /home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/ITAG3.0_gene_models.gtf
+
 samples:
   C32:
     forward: 001/illumina/pairedend_500/120512_I238_FCC0U42ACXX_L2_SZAXPI008746-45_1.fq.gz
@@ -76,3 +62,18 @@ samples:
   LA0716:
     forward: 074/illumina/pairedend_500/120512_I238_FCC0U42ACXX_L1_SZAXPI008753-79_1.fq.gz
     reverse: 074/illumina/pairedend_500/120512_I238_FCC0U42ACXX_L1_SZAXPI008753-79_2.fq.gz
+
+trimmomatic: 
+  LeadMinTrimQual: "3"
+  TrailMinTrimQual: "3"
+  adapters: /zfs/datastore0/software/src/Trimmomatic-0.36/adapters/TruSeq2-PE.fa
+  avgMinQual: "15"
+  minReadLength: "40"
+  palindromeClipTreshold: "30"
+  phred: "-phred33"
+  seedMisMatches: "2"
+  simpleClipThreshold: "10"
+  windowSize: "4"
+
+bwa:
+  verbose: 2

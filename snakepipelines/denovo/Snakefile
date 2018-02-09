@@ -2,6 +2,7 @@
 # Produce de novo assembly of RNA-Seq reads + differential analysis + annotation of the assembled transcripts#
 ##############################################################################################################
 import pandas as pd
+from helpers import shorten_trinity_seq_names
 
 #############
 # Parameters
@@ -25,9 +26,12 @@ wildcard_constraints:
 WORKING_DIR = config["working_dir"]
 RESULT_DIR = config["result_dir"]
 
-SAMPLES = samples.index.tolist()
-UNITS = list(set(units.index.get_level_values("unit").tolist()))
-print(UNITS)
+samples = pd.read_table(config["units"], index_col="sample")
+SAMPLES = list(set(samples.index.values))
+
+units = pd.read_table(config["units"], index_col=["sample", "unit"], dtype=str)
+units.index = units.index.set_levels([i.astype(str) for i in units.index.levels])  # enforce str in index
+UNITS = units.index.get_level_values('unit').unique().tolist()
 
 ##################
 # Helper functions
@@ -40,11 +44,9 @@ def get_fastq(wildcards):
 ###########/home/mgalland/data/01_sequencing_runs/20171123_F1_lines_LA1777_PI127826_Cv/
 
 MASTER_FILES = [RESULT_DIR + f for f in ["config.yaml","Snakefile"]]
-TRIMMED = expand(WORKING_DIR + "trimmed/{sample}_{unit}.{read}.fastq.gz",sample=SAMPLES,unit=UNITS,read=["forward","reverse"])
-TRINITY = expand(WORKING_DIR + "trinity/{sample}.trinity.fasta",sample=SAMPLES)
+TRINITY = expand(RESULT_DIR + "{sample}.fasta",sample=SAMPLES)
 rule all:
 	input:
-		TRIMMED,
 		TRINITY,
 		MASTER_FILES
 	message:"all done"
@@ -66,11 +68,14 @@ rule copy_master_files:
 #####################################    
 # de novo assembly of the reads
 ######################################
-def get_trimmed_forward_sample_units(wildcards):
-    return WORKING_DIR + "trimmed/" + wildcards.sample + "_*.forward.fastq.gz"
-
-def get_trimmed_reverse_sample_units(wildcards):
-    return WORKING_DIR + "trimmed/" + wildcards.sample + "_*.reverse.fastq.gz"
+rule shorten_names:
+    input:
+        WORKING_DIR + "trinity/{sample}.trinity.fasta"
+    output:
+        RESULT_DIR +  "{sample}.fasta"
+    message:"shorten names of {wildcards.sample} trinity fasta file"
+    run:
+        shorten_trinity_seq_names(input[0],output[0])
 
 rule denovo:
     input:

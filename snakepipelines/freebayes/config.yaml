@@ -5,33 +5,6 @@ resultdir: "results/"
 
 # units to samples tsv file
 units: "units.tsv"
-#samples:
-#    test:
-#      lib_forward:
-##        L1: "test_L1_R1.fastq.gz"
-#        L2: "test_L2_R1.fastq.gz"
-#      lib_reverse:
-#        L1: "test_L1_R2.fastq.gz"
-#        L2: "test_L2_R2.fastq.gz"
-#  LA1777:
-#    lib_forward:
-#      L1: "LA1777_HJL5GALXX_S1_L001_R1_001.fastq.gz"
-#      L2: "LA1777_HJL5GALXX_S1_L002_R1_001.fastq.gz"
-#      L3: "LA1777_HJL5GALXX_S1_L003_R1_001.fastq.gz"
-#      L4: "LA1777_HJL5GALXX_S1_L004_R1_001.fastq.gz"
-#      L5: "LA1777_HJL5GALXX_S1_L005_R1_001.fastq.gz"
-#      L6: "LA1777_HJL5GALXX_S1_L006_R1_001.fastq.gz"
-#      L7: "LA1777_HJL5GALXX_S1_L007_R1_001.fastq.gz"
-#      L8: "LA1777_HJL5GALXX_S1_L008_R1_001.fastq.gz"
-#    lib_reverse:
-#      L1: "LA1777_HJL5GALXX_S1_L001_R2_001.fastq.gz"
-#      L2: "LA1777_HJL5GALXX_S1_L002_R2_001.fastq.gz"
-#      L3: "LA1777_HJL5GALXX_S1_L003_R2_001.fastq.gz"
-#      L4: "LA1777_HJL5GALXX_S1_L004_R2_001.fastq.gz"
- #     L5: "LA1777_HJL5GALXX_S1_L005_R2_001.fastq.gz"
- #     L6: "LA1777_HJL5GALXX_S1_L006_R2_001.fastq.gz"
- #     L7: "LA1777_HJL5GALXX_S1_L007_R2_001.fastq.gz"
- #     L8: "LA1777_HJL5GALXX_S1_L008_R2_001.fastq.gz"
         
 adapters: "adapters.fasta"
  

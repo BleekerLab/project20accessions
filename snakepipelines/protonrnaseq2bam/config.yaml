@@ -1,17 +1,17 @@
 ---
 workdir:  "/zfs/scratch/mgalland_temp/proton2bam/scratch/"
 threads:   10
-fastqdir:  "/home/mgalland/data/01_sequencing_runs/20160216_mRNAs_20_accessions/"
+fastqdir:  "/zfs/scratch/mgalland_temp/pennellii/"
 resultdir: "results/"
  
 # reference sequences and annotations
 refs:
-  genome:  "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/S_lycopersicum_chromosomes.3.00.fa"
-  gff:     "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/ITAG3.0_gene_models.gff"
-  gtf:     "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/ITAG3.0_gene_models.gtf"
-  star:    "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/star_genome/"
-  bowtie:  "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/bowtie_index/S_lycopersicum_chromosomes.3.00.fa"
-  chromsizes: "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/chromSizes.txt"
+  genome:  "/home/mgalland/data/02_refs/Solanum_pennellii/Spenn.fasta.fa"
+  gff:     "/home/mgalland/data/02_refs/Solanum_pennellii/spenn_v2.0_gene_models_annot.gff"
+  gtf:     "/home/mgalland/data/02_refs/Solanum_pennellii/spenn_v2.0_gene_models_annot.gtf"
+  star:    "/home/mgalland/data/02_refs/Solanum_pennellii/star_index/"
+  bowtie:  "/home/mgalland/data/02_refs/Solanum_pennellii/bowtie_index/Spenn"
+  chromsizes: "/home/mgalland/data/02_refs/Solanum_pennellii/chromSizes.txt"
 
 # norm factors (should contain the size factor for each accession as given by DESEq estimateSizeFactors function
 # this is use to scale the bedgraph coverage values
