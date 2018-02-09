@@ -44,13 +44,12 @@ def get_fastq(wildcards):
 # Desired output
 #################
 QC = expand(RESULT_DIR + "fastqc_before_trimming/{sample}_{unit}_{orientation}.zip",sample=SAMPLES,unit=UNITS,orientation=["forward","reverse"])
-VCFs = expand(RESULT_DIR + "vcf/{sample}.vcf",sample=SAMPLES)
+VCFs = expand(RESULT_DIR + "vcf/{sample}.vcf.gz",sample=SAMPLES)
 MASTER_FILES = [RESULT_DIR + f for f in ["Snakefile","config.yaml","environment.yaml","units.tsv"]]
 
 rule all:
 	input:
 		QC,
-		BAMS,
 		VCFs,
 		MASTER_FILES
 	message:"all done! Cleaning working directory"
@@ -77,6 +76,20 @@ rule copy_master_files:
 ##########################
 # Call SNPs with freebayes
 ##########################
+rule compress_and_index_vcf:
+    input:
+        RESULT_DIR + "vcf/{sample}.vcf"
+    output:
+        RESULT_DIR + "vcf/{sample}.vcf.gz"
+    message:"compressing and indexing VCF file"
+    params:
+        WORKING_DIR + "vcf/{sample}.vcf.gz"
+    shell:
+        """
+        bgzip {input} 
+        tabix -p vcf {params}
+        """ 
+
 rule call_variants:
     input:
         ref = config["refs"]["genome"],
