@@ -40,6 +40,12 @@ wildcard_constraints:
 def get_fastq(wildcards):
     return units.loc[(wildcards.sample, wildcards.unit), ["fq1", "fq2"]].dropna()
 
+def get_forward_fastq(wildcards):
+    return units.loc[(wildcards.sample, wildcards.unit), ["fq1"]].dropna()
+
+def get_reverse_fastq(wildcards):
+    return units.loc[(wildcards.sample, wildcards.unit), ["fq2"]].dropna()
+
 #################
 # Desired output
 #################
@@ -48,12 +54,13 @@ VCFs = expand(RESULT_DIR + "vcf/{sample}.vcf.gz",sample=SAMPLES)
 MASTER_FILES = [RESULT_DIR + f for f in ["Snakefile","config.yaml","environment.yaml","units.tsv"]]
 
 rule all:
-	input:
-		QC,
-		VCFs,
-		MASTER_FILES
-	message:"all done! Cleaning working directory"
-        shell:"rm -r {WORKING_DIR}"
+    input:
+        QC,
+        VCFs,
+        MASTER_FILES
+    message:"all done! Cleaning working directory"
+    shell:
+        "rm -r {WORKING_DIR}"
   
 ###################
 # Save master files
@@ -71,7 +78,7 @@ rule copy_master_files:
         RESULT_DIR + "environment.yaml"
     message:"copying master files"
     shell:
-         "copy {input} {RESULT_DIR}"
+         "cp {input} {RESULT_DIR}"
 
 ##########################
 # Call SNPs with freebayes
@@ -233,13 +240,6 @@ rule trimmomatic:
 ####################
 # QC before trimming
 ####################
-def get_forward_fastq(wildcards):
-    return units.loc[(wildcards.sample, wildcards.unit), ["fq1"]].dropna()
-
-def get_reverse_fastq(wildcards):
-    return units.loc[(wildcards.sample, wildcards.unit), ["fq2"]].dropna()
-
-
 rule reverse_reads_fastqc_before_trimming:
     input:
         reverse = get_reverse_fastq 
